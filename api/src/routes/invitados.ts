@@ -51,6 +51,43 @@ invitadosRouter.post('/invitados/importar', requiereSesion, async (req, res) => 
   res.json({ creados, actualizados });
 });
 
+/** Datos de un invitado escritos a mano en la app. */
+const datosInvitado = z.object({
+  nombre: z.string().trim().min(2, 'El nombre es obligatorio').max(150),
+  correo: z.string().trim().max(150).nullish(),
+  whatsapp: z.string().trim().max(30).nullish(),
+  area: z.string().trim().max(100).nullish(),
+});
+
+/** Limpia correo y WhatsApp; si vienen escritos pero no son válidos, avisa en vez de borrarlos. */
+function limpiarContacto(d: { correo?: string | null; whatsapp?: string | null }) {
+  const correo = d.correo ? normalizarCorreo(d.correo) : null;
+  if (d.correo && !correo) throw Object.assign(new Error('El correo no es válido'), { status: 400 });
+  const whatsapp = d.whatsapp ? normalizarWhatsapp(d.whatsapp) : null;
+  if (d.whatsapp && (!whatsapp || whatsapp.length < 8)) throw Object.assign(new Error('El número de WhatsApp no es válido'), { status: 400 });
+  return { correo, whatsapp };
+}
+
+/** Agrega un invitado sin Excel. */
+invitadosRouter.post('/invitados', requiereSesion, async (req, res) => {
+  const d = datosInvitado.parse(req.body);
+  const { correo, whatsapp } = limpiarContacto(d);
+  const r = await apex<{ id: number; codigo: string }>('POST', '/invitados', {
+    cuerpo: { nombre: d.nombre.replace(/\s+/g, ' '), correo, whatsapp, area: d.area || null, token: nuevoToken() },
+  });
+  res.status(201).json(r);
+});
+
+/** Edita nombre, área, WhatsApp o correo de un invitado. */
+invitadosRouter.put('/invitados/:id', requiereSesion, async (req, res) => {
+  const d = datosInvitado.parse(req.body);
+  const { correo, whatsapp } = limpiarContacto(d);
+  await apex('PUT', `/invitados/${Number(req.params.id)}`, {
+    cuerpo: { nombre: d.nombre.replace(/\s+/g, ' '), correo, whatsapp, area: d.area || null },
+  });
+  res.json({ ok: true });
+});
+
 invitadosRouter.delete('/invitados/:id', requiereSesion, async (req, res) => {
   await apex('DELETE', `/invitados/${Number(req.params.id)}`);
   res.json({ ok: true });

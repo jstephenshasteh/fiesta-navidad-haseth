@@ -14,6 +14,7 @@ const RUTAS = {
   linterna: 'M13 2L5 14h6l-1 8 8-12h-6z',
   camara: 'M4 8h3l2-3h6l2 3h3v11H4zM9.5 13.5a2.5 2.5 0 0 0 4.6 1.3M14.5 12.5a2.5 2.5 0 0 0-4.6-1.3',
   candado: 'M7 11h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM8 11V7a4 4 0 0 1 8 0v4',
+  mas: 'M12 5v14M5 12h14',
   qr: 'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h3v3h-3zM20 14v.01M14 20h.01M17 20h4v-3',
 } as const;
 

@@ -82,6 +82,10 @@ BEGIN
     p_source_type => ORDS.source_type_plsql,
     p_source => 'BEGIN fn_api.invitados_listar; :status_code := fn_api.estado; END;',
     p_comments => 'Lista de invitados con estado de envío y llegada');
+  ORDS.DEFINE_HANDLER(p_module_name => 'fiesta.v1', p_pattern => 'invitados', p_method => 'POST',
+    p_source_type => ORDS.source_type_plsql,
+    p_source => 'BEGIN fn_api.invitado_crear(:body_text); :status_code := fn_api.estado; END;',
+    p_comments => 'Crea un invitado {nombre, correo, whatsapp, area, token}');
 
   ORDS.DEFINE_TEMPLATE(p_module_name => 'fiesta.v1', p_pattern => 'invitados/resumen');
   ORDS.DEFINE_HANDLER(p_module_name => 'fiesta.v1', p_pattern => 'invitados/resumen', p_method => 'GET',
@@ -100,6 +104,10 @@ BEGIN
     p_source_type => ORDS.source_type_plsql,
     p_source => 'BEGIN fn_api.invitado_obtener(:id); :status_code := fn_api.estado; END;',
     p_comments => 'Un invitado, incluido el token del QR');
+  ORDS.DEFINE_HANDLER(p_module_name => 'fiesta.v1', p_pattern => 'invitados/:id', p_method => 'PUT',
+    p_source_type => ORDS.source_type_plsql,
+    p_source => 'BEGIN fn_api.invitado_actualizar(:id, :body_text); :status_code := fn_api.estado; END;',
+    p_comments => 'Edita un invitado {nombre, correo, whatsapp, area}');
   ORDS.DEFINE_HANDLER(p_module_name => 'fiesta.v1', p_pattern => 'invitados/:id', p_method => 'DELETE',
     p_source_type => ORDS.source_type_plsql,
     p_source => 'BEGIN fn_api.invitado_desactivar(:id); :status_code := fn_api.estado; END;',

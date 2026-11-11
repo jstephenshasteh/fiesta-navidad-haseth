@@ -28,6 +28,8 @@ CREATE OR REPLACE PACKAGE FN_API AS
   PROCEDURE invitados_resumen;
   PROCEDURE invitado_obtener(p_id VARCHAR2);
   PROCEDURE invitados_importar(p_body CLOB);
+  PROCEDURE invitado_crear(p_body CLOB);
+  PROCEDURE invitado_actualizar(p_id VARCHAR2, p_body CLOB);
   PROCEDURE invitado_desactivar(p_id VARCHAR2);
 
   -- Llegadas
@@ -465,6 +467,102 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
     r.put('creados', l_creados);
     r.put('actualizados', l_actual);
     responder(r.to_clob);
+  EXCEPTION WHEN OTHERS THEN fallo;
+  END;
+
+  -- Cuerpo: {"nombre":"...","correo":"...","whatsapp":"507...","area":"...","token":"..."}
+  -- Crea un invitado con el siguiente código (HAS-###). 409 si ya existe ese nombre.
+  PROCEDURE invitado_crear(p_body CLOB) IS
+    o           JSON_OBJECT_T;
+    l_ev        NUMBER;
+    l_prefijo   fn_evento.prefijo_codigo%TYPE;
+    l_siguiente NUMBER;
+    l_existe    NUMBER;
+    l_id        NUMBER;
+    l_nombre    fn_invitado.nombre%TYPE;
+    l_correo    fn_invitado.correo%TYPE;
+    l_whatsapp  fn_invitado.whatsapp%TYPE;
+    l_area      fn_invitado.area%TYPE;
+    l_token     fn_invitado.token_qr%TYPE;
+    l_codigo    fn_invitado.codigo%TYPE;
+    r           JSON_OBJECT_T := JSON_OBJECT_T();
+  BEGIN
+    o := cuerpo(p_body);
+    l_nombre   := SUBSTR(REGEXP_REPLACE(TRIM(o.get_string('nombre')), '\s+', ' '), 1, 150);
+    l_correo   := SUBSTR(o.get_string('correo'), 1, 150);
+    l_whatsapp := SUBSTR(o.get_string('whatsapp'), 1, 30);
+    l_area     := SUBSTR(o.get_string('area'), 1, 100);
+    l_token    := SUBSTR(o.get_string('token'), 1, 64);
+    IF l_nombre IS NULL OR LENGTH(l_nombre) < 2 THEN
+      RAISE_APPLICATION_ERROR(-20400, 'El nombre es obligatorio');
+    END IF;
+    IF l_token IS NULL THEN
+      RAISE_APPLICATION_ERROR(-20400, 'Falta el token del QR');
+    END IF;
+
+    l_ev := ev_activo;
+    SELECT COUNT(*) INTO l_existe
+      FROM fn_invitado
+     WHERE evento_id = l_ev AND activo = 'S' AND UPPER(nombre) = UPPER(l_nombre);
+    IF l_existe > 0 THEN
+      RAISE_APPLICATION_ERROR(-20409, 'Ya existe un invitado con el nombre ' || l_nombre);
+    END IF;
+
+    SELECT prefijo_codigo INTO l_prefijo FROM fn_evento WHERE id = l_ev;
+    SELECT NVL(MAX(TO_NUMBER(REGEXP_SUBSTR(codigo, '[0-9]+$'))), 0) + 1
+      INTO l_siguiente
+      FROM fn_invitado
+     WHERE evento_id = l_ev;
+    l_codigo := l_prefijo || '-' || LPAD(l_siguiente, 3, '0');
+
+    INSERT INTO fn_invitado (evento_id, codigo, token_qr, nombre, correo, whatsapp, area)
+    VALUES (l_ev, l_codigo, l_token, l_nombre, l_correo, l_whatsapp, l_area)
+    RETURNING id INTO l_id;
+    COMMIT;
+
+    r.put('id', l_id);
+    r.put('codigo', l_codigo);
+    responder(r.to_clob, 201);
+  EXCEPTION WHEN OTHERS THEN fallo;
+  END;
+
+  -- Cuerpo: cualquiera de {"nombre","correo","whatsapp","area"}. Solo cambia los campos enviados
+  -- (un campo enviado como null o "" se borra, salvo el nombre, que es obligatorio).
+  PROCEDURE invitado_actualizar(p_id VARCHAR2, p_body CLOB) IS
+    o        JSON_OBJECT_T;
+    l_id     NUMBER;
+    l_ev     NUMBER;
+    l_existe NUMBER;
+    l_nombre fn_invitado.nombre%TYPE;
+    v        VARCHAR2(4000);
+  BEGIN
+    l_id := a_numero(p_id);
+    o := cuerpo(p_body);
+    l_ev := ev_activo;
+
+    SELECT COUNT(*) INTO l_existe FROM fn_invitado WHERE id = l_id AND evento_id = l_ev AND activo = 'S';
+    IF l_existe = 0 THEN
+      RAISE_APPLICATION_ERROR(-20404, 'Invitado no encontrado');
+    END IF;
+
+    IF o.has('nombre') THEN
+      l_nombre := SUBSTR(REGEXP_REPLACE(TRIM(o.get_string('nombre')), '\s+', ' '), 1, 150);
+      IF l_nombre IS NULL OR LENGTH(l_nombre) < 2 THEN
+        RAISE_APPLICATION_ERROR(-20400, 'El nombre es obligatorio');
+      END IF;
+      SELECT COUNT(*) INTO l_existe
+        FROM fn_invitado
+       WHERE evento_id = l_ev AND activo = 'S' AND UPPER(nombre) = UPPER(l_nombre) AND id <> l_id;
+      IF l_existe > 0 THEN
+        RAISE_APPLICATION_ERROR(-20409, 'Ya existe otro invitado con el nombre ' || l_nombre);
+      END IF;
+      UPDATE fn_invitado SET nombre = l_nombre WHERE id = l_id;
+    END IF;
+    IF o.has('correo')   THEN v := SUBSTR(o.get_string('correo'), 1, 150);  UPDATE fn_invitado SET correo   = v WHERE id = l_id; END IF;
+    IF o.has('whatsapp') THEN v := SUBSTR(o.get_string('whatsapp'), 1, 30); UPDATE fn_invitado SET whatsapp = v WHERE id = l_id; END IF;
+    IF o.has('area')     THEN v := SUBSTR(o.get_string('area'), 1, 100);    UPDATE fn_invitado SET area     = v WHERE id = l_id; END IF;
+    COMMIT;
+    ok;
   EXCEPTION WHEN OTHERS THEN fallo;
   END;
 
