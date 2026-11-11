@@ -5,7 +5,7 @@ import { requiereSesion } from '../auth.js';
 import { obtenerArte, obtenerEvento, obtenerInvitado } from '../services/datos.js';
 import { pngPase } from '../services/pase.js';
 import { enviarCorreo } from '../services/correo.js';
-import { enviarWhatsapp } from '../services/whatsapp360.js';
+import { enviarWhatsapp, modoWhatsapp } from '../services/whatsapp360.js';
 import { llenarPlantilla } from '../util.js';
 import { config } from '../config.js';
 
@@ -13,8 +13,10 @@ export const enviosRouter = Router();
 
 /** Qué canales están configurados en el servidor. */
 enviosRouter.get('/envios/canales', requiereSesion, (_req, res) => {
+  const modo = modoWhatsapp();
   res.json({
-    whatsapp: Boolean(config.whatsapp.apiKey && config.whatsapp.templatePase),
+    whatsapp: modo !== 'sin-configurar',
+    whatsappModo: modo, // 'plantillas' | 'prueba' | 'sin-configurar'
     correo: Boolean(config.smtp.host),
   });
 });
@@ -59,7 +61,9 @@ enviosRouter.post('/envios', requiereSesion, async (req, res) => {
     const inv = await obtenerInvitado(id);
     if (!inv) continue;
     const pase = pngPase({ nombre: inv.nombre, codigo: inv.codigo, token: inv.token, evento: ev });
-    const mensaje = llenarPlantilla(plantilla, { nombre: inv.nombre, codigo: inv.codigo, area: inv.area ?? '' });
+    // El código interno (HAS-###) no se muestra al invitado: si el mensaje trae {codigo}, se quita.
+    const sinCodigo = plantilla.replace(/\s*\(\s*\{codigo\}\s*\)/g, '').replace(/\{codigo\}/g, '');
+    const mensaje = llenarPlantilla(sinCodigo, { nombre: inv.nombre, area: inv.area ?? '' });
 
     for (const canal of canales) {
       const destino = canal === 'WHATSAPP' ? inv.whatsapp : inv.correo;
@@ -69,7 +73,7 @@ enviosRouter.post('/envios', requiereSesion, async (req, res) => {
       }
       try {
         const proveedorId = canal === 'WHATSAPP'
-          ? await enviarWhatsapp({ para: destino, nombre: inv.nombre, codigo: inv.codigo, arte, pase })
+          ? await enviarWhatsapp({ para: destino, nombre: inv.nombre, codigo: inv.codigo, mensaje, arte, pase })
           : await enviarCorreo({ para: destino, asunto, mensaje, arte, pase, codigo: inv.codigo });
         await registrar(id, canal, 'ENVIADO', null, proveedorId, req.sesion!.adminId);
         resultados.push({ invitadoId: id, nombre: inv.nombre, canal, estado: 'ENVIADO' });

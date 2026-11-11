@@ -11,7 +11,7 @@ VALUES ('Fiesta navideña 2026',
         'Hotel Marriott Panamá Albrook', 'Salón Gran Colón', 'Black & White',
         'HAS', 'rojo',
         'Te invitamos a la Fiesta navideña 2026 · 5 de diciembre',
-        'Hola {nombre}, Grupo De Haseth tiene el placer de invitarte a nuestra Fiesta navideña 2026, el viernes 5 de diciembre a las 7:00 p. m. en el Hotel Marriott Panamá Albrook, Salón Gran Colón. Vestimenta: Black & White. Te enviamos el arte de la invitación y tu pase con código QR personal ({codigo}); preséntalo en la entrada. ¡Te esperamos!',
+        'Hola {nombre}, Grupo De Haseth tiene el placer de invitarte a nuestra Fiesta navideña 2026, el viernes 5 de diciembre a las 7:00 p. m. en el Hotel Marriott Panamá Albrook, Salón Gran Colón. Vestimenta: Black & White. Te enviamos el arte de la invitación y tu pase con código QR personal; preséntalo en la entrada. ¡Te esperamos!',
         'S');
 
 COMMIT;

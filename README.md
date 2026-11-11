@@ -107,6 +107,18 @@ npm run crear-admin -w api -- "Juan Stephens" 1234 --principal
 
 Luego, desde la app (Ajustes › Administradores) se agregan los demás y se sube el **arte** de la invitación.
 
+### Certificado interno (error "No se pudo conectar con APEX")
+
+Si APEX está en un servidor interno con certificado HTTPS de la empresa, Node no lo reconoce por sí solo.
+La app ya agrega automáticamente los certificados de Windows (los mismos que usa Chrome), así que basta con
+tener **Node 22.19 o superior** (`node -v`). Si aun así falla:
+
+1. En Chrome, abra la URL de APEX, toque el candado › *La conexión es segura* › *El certificado es válido*.
+2. En *Detalles*, elija el certificado **raíz** (el de arriba) › *Exportar* › formato *Base-64 (.crt)*.
+3. Guárdelo, por ejemplo en `api/certificados/ca-haseth.crt`, y en `api/.env` ponga `APEX_CA_CERT=certificados/ca-haseth.crt`.
+
+El mensaje de error indica la causa exacta (certificado, servidor no encontrado, puerto bloqueado).
+
 ## 3. Ejecutar en desarrollo
 
 En dos terminales:
@@ -150,7 +162,7 @@ Los mensajes que inicia la empresa deben ser **plantillas aprobadas por Meta**. 
 | Variable `.env`          | Encabezado | Cuerpo sugerido |
 |--------------------------|-----------|-----------------|
 | `WA_TEMPLATE_INVITACION` | Imagen    | `Hola {{1}}, Grupo De Haseth tiene el placer de invitarte a nuestra Fiesta navideña 2026. ¡Te esperamos!` |
-| `WA_TEMPLATE_PASE`       | Imagen    | `Este es tu pase de entrada personal ({{1}}). Preséntalo en la entrada del evento.` |
+| `WA_TEMPLATE_PASE`       | Imagen    | `{{1}}, este es tu pase de entrada personal. Presenta el código QR en la entrada del evento.` |
 
 La API sube el arte una vez, genera el pase de cada invitado, lo sube y envía ambas plantillas. Los números de 8 dígitos se completan con el código de país `WA_CODIGO_PAIS` (507).
 
@@ -160,7 +172,7 @@ Se envía con SMTP (`nodemailer`): el texto del mensaje + las 2 imágenes dentro
 
 ## Pase QR
 
-- El QR contiene `FNH:` + un token aleatorio único por invitado (no adivinable). El código visible es `HAS-001`, `HAS-002`, …
+- El QR contiene `FNH:` + un token aleatorio único por invitado (no adivinable). El código interno (`HAS-001`, `HAS-002`, …) solo lo ve el personal en la app; no aparece en el pase ni en los mensajes.
 - El pase usa las tipografías del arte (**Playfair Display** y **Montserrat**, licencia OFL), incluidas en `api/fonts/`, para verse igual en cualquier servidor.
 
 ## Excel de invitados

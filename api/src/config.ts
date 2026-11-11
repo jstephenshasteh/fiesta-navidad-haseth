@@ -1,4 +1,35 @@
 import 'dotenv/config';
+import fs from 'node:fs';
+import tls from 'node:tls';
+
+/**
+ * Certificados de confianza para HTTPS.
+ * Por defecto Node solo confía en su propia lista; aquí se agregan también los certificados
+ * del sistema operativo (en Windows, los mismos que usa Chrome). Así funciona con servidores
+ * APEX internos firmados por la autoridad de certificados de la empresa.
+ *   APEX_CERTIFICADOS_SISTEMA=false  → no usar los del sistema
+ *   APEX_CA_CERT=ruta\\ca.pem         → agregar además un certificado raíz exportado (formato PEM/Base-64)
+ */
+function configurarCertificados() {
+  const usarSistema = process.env.APEX_CERTIFICADOS_SISTEMA !== 'false';
+  const archivo = process.env.APEX_CA_CERT?.trim();
+  if (!usarSistema && !archivo) return;
+  if (typeof tls.setDefaultCACertificates !== 'function') {
+    console.warn('Esta versión de Node no permite agregar certificados (actualice a Node 22.19 o superior).');
+    return;
+  }
+  const certs = [...tls.getCACertificates('default')];
+  if (usarSistema) certs.push(...tls.getCACertificates('system'));
+  if (archivo) {
+    try {
+      certs.push(fs.readFileSync(archivo, 'utf8'));
+    } catch {
+      console.warn(`No se pudo leer APEX_CA_CERT (${archivo})`);
+    }
+  }
+  tls.setDefaultCACertificates([...new Set(certs)]);
+}
+configurarCertificados();
 
 function req(name: string, fallback?: string): string {
   const v = process.env[name] ?? fallback;
@@ -12,7 +43,8 @@ export const config = {
   jwtSecret: req('JWT_SECRET', process.env.NODE_ENV === 'production' ? undefined : 'dev-secret'),
   apex: {
     // URL base de ORDS con el alias del esquema, p. ej. https://apex.oracle.com/pls/apex/haseth
-    baseUrl: (process.env.APEX_BASE_URL ?? '').replace(/\/$/, ''),
+    // (si viene con /fiesta/v1 al final, se quita: la app lo agrega sola)
+    baseUrl: (process.env.APEX_BASE_URL ?? '').trim().replace(/\/+$/, '').replace(/\/fiesta\/v1$/i, ''),
     clientId: process.env.APEX_CLIENT_ID ?? '',
     clientSecret: process.env.APEX_CLIENT_SECRET ?? '',
   },

@@ -47,6 +47,23 @@ async function mensajeError(r: Response): Promise<string> {
   }
 }
 
+/** Traduce los errores de red de fetch ("fetch failed") a un mensaje con la causa real. */
+function explicarFallo(e: unknown): string {
+  const err = e as { name?: string; message?: string; cause?: { code?: string; message?: string } };
+  if (err?.name === 'TimeoutError') return 'APEX no respondió en 30 segundos.';
+  const codigo = err?.cause?.code ?? '';
+  const detalle = codigo || err?.cause?.message || err?.message || String(e);
+  let pista = '';
+  if (/CERT|SELF_SIGNED|UNABLE_TO_VERIFY|UNABLE_TO_GET_ISSUER|ERR_TLS/i.test(detalle)) {
+    pista = ' → Node no confía en el certificado HTTPS del servidor APEX (certificado interno). Vea "Certificado interno" en el README.';
+  } else if (codigo === 'ENOTFOUND' || codigo === 'EAI_AGAIN') {
+    pista = ' → No se encuentra el servidor. Revise APEX_BASE_URL y que esté conectado a la red/VPN de la empresa.';
+  } else if (['ECONNREFUSED', 'ECONNRESET', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'EHOSTUNREACH'].includes(codigo)) {
+    pista = ' → El servidor no acepta la conexión desde este equipo (puerto, firewall o VPN).';
+  }
+  return `No se pudo conectar con APEX (${detalle}) en ${config.apex.baseUrl}${pista}`;
+}
+
 interface Opciones {
   cuerpo?: unknown;
   binario?: { datos: Buffer; tipo: string };
@@ -69,7 +86,7 @@ async function llamar(metodo: string, ruta: string, op: Opciones, reintento = fa
   try {
     r = await fetch(`${config.apex.baseUrl}${MODULO}${ruta}`, { method: metodo, headers, body, signal: AbortSignal.timeout(30_000) });
   } catch (e) {
-    throw new ErrorApex(`No se pudo conectar con APEX: ${e instanceof Error ? e.message : e}`, 502);
+    throw new ErrorApex(explicarFallo(e), 502);
   }
   // Token vencido o revocado: se pide otro y se reintenta una vez.
   if (r.status === 401 && t && !reintento) return llamar(metodo, ruta, op, true);

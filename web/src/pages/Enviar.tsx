@@ -8,7 +8,7 @@ type Canal = 'WHATSAPP' | 'CORREO' | 'AMBOS';
 interface Resultado { invitadoId: number; nombre: string; canal: 'WHATSAPP' | 'CORREO'; estado: 'ENVIADO' | 'ERROR' | 'OMITIDO'; detalle?: string }
 
 const LOTE = 5;
-const VARIABLES = ['{nombre}', '{codigo}', '{area}'];
+const VARIABLES = ['{nombre}', '{area}'];
 
 export default function Enviar() {
   const loc = useLocation();
@@ -16,7 +16,7 @@ export default function Enviar() {
 
   const [todos, setTodos] = useState<Invitado[]>([]);
   const [evento, setEvento] = useState<Evento | null>(null);
-  const [canales, setCanales] = useState<{ whatsapp: boolean; correo: boolean } | null>(null);
+  const [canales, setCanales] = useState<{ whatsapp: boolean; whatsappModo?: string; correo: boolean } | null>(null);
   const [canal, setCanal] = useState<Canal>('WHATSAPP');
   const [asunto, setAsunto] = useState('');
   const [mensaje, setMensaje] = useState('');
@@ -27,7 +27,7 @@ export default function Enviar() {
   const [resultados, setResultados] = useState<Resultado[] | null>(null);
 
   useEffect(() => {
-    Promise.all([api<Invitado[]>('/api/invitados'), api<Evento>('/api/evento'), api<{ whatsapp: boolean; correo: boolean }>('/api/envios/canales')])
+    Promise.all([api<Invitado[]>('/api/invitados'), api<Evento>('/api/evento'), api<{ whatsapp: boolean; whatsappModo?: string; correo: boolean }>('/api/envios/canales')])
       .then(([l, e, c]) => {
         setTodos(l);
         setEvento(e);
@@ -122,9 +122,13 @@ export default function Enviar() {
           </label>
         )}
         {canal === 'WHATSAPP' ? (
-          <p className="tenue chico">En WhatsApp se usan las plantillas aprobadas en 360dialog (arte con el nombre y pase con el código). El texto de abajo se usa en el correo.</p>
+          canales?.whatsappModo === 'prueba' ? (
+            <p className="ambar chico">Modo de prueba de WhatsApp: el mensaje de abajo va junto al arte. Solo llega a quien le haya escrito al número de la empresa en las últimas 24 horas.</p>
+          ) : (
+            <p className="tenue chico">En WhatsApp se usan las plantillas aprobadas en 360dialog (arte y pase, ambos con el nombre del invitado). El texto de abajo se usa en el correo.</p>
+          )
         ) : null}
-        <label htmlFor="msg" className="tenue">Mensaje del correo</label>
+        <label htmlFor="msg" className="tenue">{canales?.whatsappModo === 'prueba' ? 'Mensaje (WhatsApp y correo)' : 'Mensaje del correo'}</label>
         <textarea id="msg" value={mensaje} onChange={(e) => setMensaje(e.target.value)} rows={4} />
         <div className="fila-gap envolver">
           <span className="tenue chico">Variables:</span>

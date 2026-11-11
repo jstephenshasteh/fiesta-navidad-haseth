@@ -5,7 +5,7 @@ import { config } from '../config.js';
  * Los mensajes que inicia la empresa deben ser PLANTILLAS aprobadas por Meta.
  * Se usan dos plantillas con encabezado de tipo IMAGEN:
  *   1) WA_TEMPLATE_INVITACION: imagen = arte, cuerpo {{1}} = nombre
- *   2) WA_TEMPLATE_PASE:       imagen = pase QR, cuerpo {{1}} = código
+ *   2) WA_TEMPLATE_PASE:       imagen = pase QR, cuerpo {{1}} = nombre
  */
 
 function headers(extra: Record<string, string> = {}): Record<string, string> {
@@ -59,26 +59,66 @@ async function enviarPlantilla(para: string, plantilla: string, imagenId: string
   return j.messages?.[0]?.id ?? '';
 }
 
+/**
+ * Mensaje normal con imagen (sin plantilla). WhatsApp solo lo entrega si el invitado
+ * le escribió al número de la empresa en las últimas 24 horas. Sirve para hacer pruebas
+ * mientras Meta aprueba las plantillas.
+ */
+async function enviarImagen(para: string, imagenId: string, texto: string): Promise<string> {
+  const body = {
+    messaging_product: 'whatsapp',
+    recipient_type: 'individual',
+    to: para,
+    type: 'image',
+    image: { id: imagenId, caption: texto.slice(0, 1024) },
+  };
+  const r = await fetch(`${config.whatsapp.baseUrl}/messages`, {
+    method: 'POST',
+    headers: headers({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`360dialog (imagen): ${await leerError(r)}`);
+  const j = (await r.json()) as { messages?: { id: string }[] };
+  return j.messages?.[0]?.id ?? '';
+}
+
+/** Modo de envío según la configuración: con plantillas (producción) o de prueba (24 h). */
+export function modoWhatsapp(): 'plantillas' | 'prueba' | 'sin-configurar' {
+  if (!config.whatsapp.apiKey) return 'sin-configurar';
+  return config.whatsapp.templatePase ? 'plantillas' : 'prueba';
+}
+
 /** El arte se sube una sola vez y se reutiliza (Meta guarda el media ~30 días). */
 let arteCache: { clave: string; id: string; at: number } | null = null;
+
+async function idArte(arte: { contenido: Buffer; mime: string; nombre: string; clave: string }): Promise<string> {
+  if (!arteCache || arteCache.clave !== arte.clave || Date.now() - arteCache.at > 20 * 86400_000) {
+    arteCache = { clave: arte.clave, id: await subirMedia(arte.contenido, arte.mime, arte.nombre), at: Date.now() };
+  }
+  return arteCache.id;
+}
 
 export async function enviarWhatsapp(opts: {
   para: string;
   nombre: string;
   codigo: string;
+  mensaje: string;
   arte: { contenido: Buffer; mime: string; nombre: string; clave: string } | null;
   pase: Buffer;
 }): Promise<string> {
   const { templateInvitacion, templatePase } = config.whatsapp;
-  if (!templatePase) throw new Error('Falta WA_TEMPLATE_PASE');
   const ids: string[] = [];
-  if (opts.arte && templateInvitacion) {
-    if (!arteCache || arteCache.clave !== opts.arte.clave || Date.now() - arteCache.at > 20 * 86400_000) {
-      arteCache = { clave: opts.arte.clave, id: await subirMedia(opts.arte.contenido, opts.arte.mime, opts.arte.nombre), at: Date.now() };
-    }
-    ids.push(await enviarPlantilla(opts.para, templateInvitacion, arteCache.id, [opts.nombre]));
+  const paseId = await subirMedia(opts.pase, 'image/png', 'pase-fiesta-navidena-2026.png');
+
+  if (modoWhatsapp() === 'prueba') {
+    if (opts.arte) ids.push(await enviarImagen(opts.para, await idArte(opts.arte), opts.mensaje));
+    ids.push(await enviarImagen(opts.para, paseId, 'Este es tu pase de entrada personal. Presenta el código QR en la entrada.'));
+    return ids.join(',');
   }
-  const paseId = await subirMedia(opts.pase, 'image/png', `pase-${opts.codigo}.png`);
-  ids.push(await enviarPlantilla(opts.para, templatePase, paseId, [opts.codigo]));
+
+  if (opts.arte && templateInvitacion) {
+    ids.push(await enviarPlantilla(opts.para, templateInvitacion, await idArte(opts.arte), [opts.nombre]));
+  }
+  ids.push(await enviarPlantilla(opts.para, templatePase, paseId, [opts.nombre]));
   return ids.join(',');
 }

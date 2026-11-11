@@ -43,14 +43,14 @@ function qrPath(texto: string, x: number, y: number, tam: number): string {
   return `<path d="${d}" fill="#111111"/>`;
 }
 
-/** SVG del pase (1080×1440). */
+/** SVG del pase (1080×1440). El código interno (HAS-###) no se muestra al invitado. */
 export function svgPase(p: DatosPase): string {
   const t = TEMAS[p.evento.temaPase ?? 'rojo'] ?? TEMAS.rojo;
   const W = 1080;
   const H = 1440;
   const nombre = escaparXml(p.nombre);
   const tamNombre = p.nombre.length > 28 ? 52 : p.nombre.length > 20 ? 60 : 68;
-  const qrTam = 400;
+  const qrTam = 460;
   const qrX = (W - qrTam) / 2;
   const qrY = 560;
   const e = p.evento;
@@ -65,8 +65,7 @@ export function svgPase(p: DatosPase): string {
   <text x="${W / 2}" y="455" text-anchor="middle" font-family="${SERIF}" font-size="${tamNombre}" font-weight="600" fill="#FFFFFF">${nombre}</text>
   <rect x="${qrX - 30}" y="${qrY - 30}" width="${qrTam + 60}" height="${qrTam + 60}" rx="28" fill="#FFFFFF"/>
   ${qrPath(valorQr(p.token), qrX, qrY, qrTam)}
-  <text x="${W / 2}" y="${qrY + qrTam + 90}" text-anchor="middle" font-family="${SANS}" font-size="32" font-weight="700" letter-spacing="5" fill="#FFFFFF">${escaparXml(p.codigo)}</text>
-  <text x="${W / 2}" y="${qrY + qrTam + 135}" text-anchor="middle" font-family="${SANS}" font-size="26" fill="#F3DADB">Presenta este código en la entrada</text>
+  <text x="${W / 2}" y="${qrY + qrTam + 95}" text-anchor="middle" font-family="${SANS}" font-size="28" fill="#F3DADB">Presenta este código QR en la entrada</text>
   <line x1="100" y1="1205" x2="${W - 100}" y2="1205" stroke="${t.frame}" stroke-opacity="0.6" stroke-width="2"/>
   <text x="200" y="1278" text-anchor="middle" font-family="${SERIF}" font-size="60" font-weight="700" fill="#FFFFFF">${escaparXml(e.dia ?? '')}</text>
   <text x="200" y="1318" text-anchor="middle" font-family="${SANS}" font-size="26" font-weight="600" letter-spacing="3" fill="#FFFFFF">${escaparXml(e.mesCorto ?? '')}</text>
