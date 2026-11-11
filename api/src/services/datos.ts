@@ -1,4 +1,5 @@
-import { eventoActivoId, oracledb, queryOne, withConn } from '../db.js';
+/** Tipos y consultas comunes contra las APIs de APEX. */
+import { apex, apexOpcional } from '../apex.js';
 
 export interface Evento {
   id: number;
@@ -15,20 +16,9 @@ export interface Evento {
   asuntoCorreo: string | null;
   mensaje: string | null;
   arteNombre: string | null;
+  arteMime: string | null;
+  arteLargo: number;
   tieneArte: number;
-}
-
-export async function obtenerEvento(): Promise<Evento> {
-  const id = await eventoActivoId();
-  const ev = await queryOne<Evento>(
-    `SELECT ID "id", NOMBRE "nombre", FECHA_TEXTO "fechaTexto", DIA "dia", MES_CORTO "mesCorto", HORA "hora",
-            LUGAR "lugar", SALON "salon", VESTIMENTA "vestimenta", PREFIJO_CODIGO "prefijoCodigo",
-            TEMA_PASE "temaPase", ASUNTO_CORREO "asuntoCorreo", MENSAJE "mensaje", ARTE_NOMBRE "arteNombre",
-            CASE WHEN ARTE IS NULL THEN 0 ELSE 1 END "tieneArte"
-       FROM FN_EVENTO WHERE ID = :id`,
-    { id },
-  );
-  return ev!;
 }
 
 export interface Arte {
@@ -36,25 +26,6 @@ export interface Arte {
   mime: string;
   nombre: string;
   clave: string;
-}
-
-export async function obtenerArte(): Promise<Arte | null> {
-  const id = await eventoActivoId();
-  return withConn(async (c) => {
-    const r = await c.execute<{ ARTE: Buffer | null; ARTE_MIME: string; ARTE_NOMBRE: string; LARGO: number }>(
-      `SELECT ARTE, ARTE_MIME, ARTE_NOMBRE, DBMS_LOB.GETLENGTH(ARTE) LARGO FROM FN_EVENTO WHERE ID = :id`,
-      { id },
-      { fetchInfo: { ARTE: { type: oracledb.BUFFER } } },
-    );
-    const row = r.rows?.[0];
-    if (!row?.ARTE) return null;
-    return {
-      contenido: row.ARTE,
-      mime: row.ARTE_MIME || 'image/png',
-      nombre: row.ARTE_NOMBRE || 'invitacion.png',
-      clave: `${row.ARTE_NOMBRE}:${row.LARGO}`,
-    };
-  });
 }
 
 export interface Invitado {
@@ -67,11 +38,45 @@ export interface Invitado {
   area: string | null;
 }
 
-export async function obtenerInvitado(id: number): Promise<Invitado | null> {
-  const ev = await eventoActivoId();
-  return queryOne<Invitado>(
-    `SELECT ID "id", CODIGO "codigo", TOKEN_QR "token", NOMBRE "nombre", CORREO "correo", WHATSAPP "whatsapp", AREA "area"
-       FROM FN_INVITADO WHERE ID = :id AND EVENTO_ID = :ev AND ACTIVO = 'S'`,
-    { id, ev },
-  );
+export interface FilaInvitado {
+  id: number;
+  codigo: string;
+  nombre: string;
+  correo: string | null;
+  whatsapp: string | null;
+  area: string | null;
+  llegadaEn: string | null;
+  llegadaVia: string | null;
+  llegadaAdmin: string | null;
+  waEnviadoEn: string | null;
+  correoEnviadoEn: string | null;
+}
+
+export function obtenerEvento(): Promise<Evento> {
+  return apex<Evento>('GET', '/evento');
+}
+
+/** Imagen 1 (arte). Se guarda en memoria y solo se vuelve a descargar si cambia. */
+let cacheArte: Arte | null = null;
+export async function obtenerArte(ev?: Evento): Promise<Arte | null> {
+  const e = ev ?? (await obtenerEvento());
+  if (!e.tieneArte) return null;
+  const clave = `${e.arteNombre}:${e.arteLargo}`;
+  if (cacheArte?.clave === clave) return cacheArte;
+  const contenido = await apexOpcional<Buffer>('GET', '/evento/arte', { respuesta: 'binario' });
+  if (!contenido) return null;
+  cacheArte = { contenido, mime: e.arteMime ?? 'image/png', nombre: e.arteNombre ?? 'invitacion.png', clave };
+  return cacheArte;
+}
+
+export function olvidarArte() {
+  cacheArte = null;
+}
+
+export function obtenerInvitado(id: number): Promise<Invitado | null> {
+  return apexOpcional<Invitado>('GET', `/invitados/${id}`);
+}
+
+export function listarInvitados(): Promise<FilaInvitado[]> {
+  return apex<FilaInvitado[]>('GET', '/invitados');
 }

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { exec } from '../db.js';
+import { apex } from '../apex.js';
 import { requiereSesion } from '../auth.js';
 import { obtenerArte, obtenerEvento, obtenerInvitado } from '../services/datos.js';
 import { pngPase } from '../services/pase.js';
@@ -34,18 +34,22 @@ interface Resultado {
   detalle?: string;
 }
 
+/** Guarda el resultado en APEX (FN_ENVIO). Si falla el registro, no se pierde el envío ya hecho. */
 async function registrar(invitadoId: number, canal: string, estado: string, detalle: string | null, proveedorId: string | null, adminId: number) {
-  await exec(
-    `INSERT INTO FN_ENVIO (INVITADO_ID, CANAL, ESTADO, DETALLE, PROVEEDOR_ID, ADMIN_ID) VALUES (:i, :c, :e, :d, :p, :a)`,
-    { i: invitadoId, c: canal, e: estado, d: detalle?.slice(0, 1000) ?? null, p: proveedorId?.slice(0, 200) ?? null, a: adminId },
-  );
+  try {
+    await apex('POST', '/envios', {
+      cuerpo: { invitadoId, canal, estado, detalle: detalle?.slice(0, 1000) ?? null, proveedorId: proveedorId?.slice(0, 200) ?? null, adminId },
+    });
+  } catch (e) {
+    console.error(`No se pudo registrar el envío del invitado ${invitadoId} en APEX:`, e instanceof Error ? e.message : e);
+  }
 }
 
 /** Envía el arte + pase QR a cada invitado por el canal elegido. */
 enviosRouter.post('/envios', requiereSesion, async (req, res) => {
   const p = peticion.parse(req.body);
   const ev = await obtenerEvento();
-  const arte = await obtenerArte();
+  const arte = await obtenerArte(ev);
   const plantilla = p.mensaje ?? ev.mensaje ?? '';
   const asunto = p.asunto ?? ev.asuntoCorreo ?? ev.nombre;
   const canales: ('WHATSAPP' | 'CORREO')[] = p.canal === 'AMBOS' ? ['WHATSAPP', 'CORREO'] : [p.canal];

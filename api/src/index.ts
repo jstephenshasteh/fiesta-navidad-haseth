@@ -4,10 +4,10 @@ import { fileURLToPath } from 'node:url';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import bcrypt from 'bcryptjs';
 import { ZodError } from 'zod';
 import { config } from './config.js';
-import bcrypt from 'bcryptjs';
-import { closeDb, exec, initDb, queryOne, withConn } from './db.js';
+import { apex } from './apex.js';
 import { authRouter } from './routes/auth.js';
 import { eventoRouter } from './routes/evento.js';
 import { invitadosRouter } from './routes/invitados.js';
@@ -21,13 +21,13 @@ if (config.corsOrigin.length) app.use(cors({ origin: config.corsOrigin }));
 app.use(express.json({ limit: '5mb' }));
 
 app.get('/api/salud', (_req, res) => res.json({ ok: true }));
-/** Comprueba la conexión a Oracle (útil al desplegar). */
-app.get('/api/salud/db', async (_req, res) => {
+/** Comprueba la conexión con las APIs de APEX (útil al desplegar). */
+app.get('/api/salud/apex', async (_req, res) => {
   try {
-    await withConn((c) => c.execute('SELECT 1 FROM DUAL'));
-    res.json({ oracle: 'ok' });
+    const ev = await apex<{ nombre: string }>('GET', '/evento');
+    res.json({ apex: 'ok', evento: ev.nombre });
   } catch (e) {
-    res.status(503).json({ oracle: 'error', detalle: e instanceof Error ? e.message : String(e) });
+    res.status(503).json({ apex: 'error', detalle: e instanceof Error ? e.message : String(e) });
   }
 });
 app.use('/api', authRouter, eventoRouter, invitadosRouter, checkinRouter, enviosRouter);
@@ -48,9 +48,22 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 const server = app.listen(config.port, '0.0.0.0', () => {
-  console.log(`API lista en el puerto ${config.port}`);
-  void initDb().then(adminInicial);
+  console.log(`App lista en el puerto ${config.port}`);
+  void comprobarApex().then(async (ok) => {
+    if (ok) await adminInicial();
+  });
 });
+
+async function comprobarApex(): Promise<boolean> {
+  try {
+    await apex('GET', '/evento');
+    console.log('Conexión con APEX OK');
+    return true;
+  } catch (e) {
+    console.error('No se pudo conectar con APEX:', e instanceof Error ? e.message : e);
+    return false;
+  }
+}
 
 /** Si no hay administradores, crea el primero con ADMIN_INICIAL_NOMBRE y ADMIN_INICIAL_PIN. */
 async function adminInicial() {
@@ -59,11 +72,10 @@ async function adminInicial() {
   if (!nombre || !pin) return;
   if (!/^\d{4,6}$/.test(pin)) return console.error('ADMIN_INICIAL_PIN debe tener 4 a 6 dígitos');
   try {
-    const r = await queryOne<{ n: number }>(`SELECT COUNT(*) "n" FROM FN_ADMIN`);
-    if (r?.n !== 0) return;
-    await exec(`INSERT INTO FN_ADMIN (NOMBRE, PIN_HASH, ES_PRINCIPAL, COLOR) VALUES (:n, :h, 'S', '#0E3B2E')`, {
-      n: nombre,
-      h: await bcrypt.hash(pin, 10),
+    const admins = await apex<unknown[]>('GET', '/admins');
+    if (admins.length) return;
+    await apex('POST', '/admins', {
+      cuerpo: { nombre, pinHash: await bcrypt.hash(pin, 10), esPrincipal: true, color: '#0E3B2E' },
     });
     console.log(`Administrador principal "${nombre}" creado. Ya puede quitar ADMIN_INICIAL_PIN de las variables.`);
   } catch (e) {
@@ -73,7 +85,6 @@ async function adminInicial() {
 
 for (const s of ['SIGINT', 'SIGTERM'] as const) {
   process.on(s, () => {
-    server.close();
-    closeDb().finally(() => process.exit(0));
+    server.close(() => process.exit(0));
   });
 }

@@ -18,10 +18,6 @@ export function tokenDesdeQr(valor: string): string | null {
   return null;
 }
 
-export function formatoCodigo(prefijo: string, n: number): string {
-  return `${prefijo}-${String(n).padStart(3, '0')}`;
-}
-
 /** Deja solo dígitos y agrega el código de país a números locales de 8 dígitos. */
 export function normalizarWhatsapp(v: string | null | undefined): string | null {
   if (!v) return null;

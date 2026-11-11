@@ -8,46 +8,98 @@ App web para **tablet** (se abre desde el navegador; no se instala desde tiendas
 - **Envíen la invitación por WhatsApp (360dialog) y/o correo**: 2 imágenes → el **arte general** + un **pase QR personalizado** (nombre, código y QR únicos).
 - Exporten la lista de llegadas a Excel.
 
+## Cómo funciona
+
+```
+Tablet (navegador)  ──HTTPS──▶  App en Railway (web + servidor Node)  ──HTTPS + OAuth2──▶  Oracle APEX (APIs REST / ORDS)  ──▶  Tablas FN_*
+                                     │
+                                     ├─▶ 360dialog (WhatsApp)
+                                     └─▶ SMTP (correo)
+```
+
+- **Oracle APEX** guarda los datos y los expone como APIs REST (módulo `fiesta/v1`).
+- **El servidor Node** (en Railway) sirve la app web, valida el PIN de los administradores, genera el pase QR
+  y envía por WhatsApp y correo. Guarda las claves (APEX, 360dialog, SMTP), que nunca llegan a la tablet.
+- **La tablet** solo habla con el servidor Node.
+
 ## Estructura
 
 ```
 fiesta-navidena-haseth/
-├─ db/                 Scripts SQL para Oracle (tablas y datos iniciales)
-├─ api/                API Node.js + Express + TypeScript (Oracle, QR, pase, correo, WhatsApp)
+├─ db/                 Scripts para Oracle APEX: tablas, paquete FN_API, APIs REST y seguridad OAuth2
+├─ api/                Servidor Node.js + Express + TypeScript (consume APEX, pase QR, correo, WhatsApp)
 │  └─ src/
+│     ├─ apex.ts       Cliente de las APIs de APEX (token OAuth2 + llamadas)
 │     ├─ routes/       auth · evento · invitados · checkin · envios
 │     └─ services/     pase (imagen QR) · correo (SMTP) · whatsapp360 (360dialog) · datos
 └─ web/                App React + Vite + TypeScript (PWA para la tablet)
    └─ src/pages/       Ingreso · Escanear · Invitados · Enviar · Ajustes
 ```
 
-## Requisitos
+## 1. Oracle APEX: tablas y APIs REST
 
-- Node.js 20 o superior.
-- Oracle Database 12c o superior (la API usa el driver `oracledb` en modo *thin*: **no** necesita Oracle Client instalado).
-- Para la cámara, la app debe servirse por **HTTPS** (o `localhost`). En la tablet, por `http://IP` el navegador bloquea la cámara.
+En APEX, entre a **SQL Workshop › SQL Scripts**, suba cada archivo de `db/` y ejecútelo **en este orden**:
 
-## 1. Base de datos (Oracle)
+| Script | Qué hace |
+|---|---|
+| `01_tablas.sql` | Crea las tablas `FN_EVENTO`, `FN_ADMIN`, `FN_INVITADO`, `FN_ENVIO`, `FN_ESCANEO` |
+| `02_datos_iniciales.sql` | Crea el evento (fecha, hora, lugar, mensaje) |
+| `03_paquete_fn_api.sql` | Paquete PL/SQL `FN_API` con toda la lógica (responde JSON) |
+| `04_servicios_rest.sql` | Publica el módulo REST `fiesta.v1` (aparece en **SQL Workshop › RESTful Services**) |
+| `05_seguridad_oauth.sql` | Protege el módulo con OAuth2 y crea el cliente `fiesta_railway`. **Copie el CLIENT_ID y CLIENT_SECRET que muestra** |
 
-Con el usuario/esquema que usará la API:
+Requisitos: Oracle 19c o superior y ORDS 23.3 o superior (en apex.oracle.com y Autonomous Database ya se cumple).
+El esquema debe estar habilitado para REST: en **SQL Workshop › RESTful Services**, si aparece *Register Schema with ORDS*, acéptelo.
+Ahí mismo verá el **alias** del esquema, que forma la URL de las APIs.
 
-```sql
-@db/01_tablas.sql
-@db/02_datos_iniciales.sql
+`99_borrar_todo.sql` elimina todo (módulo, paquete y tablas) para empezar de cero.
+
+### APIs publicadas
+
+URL base: `https://SU-SERVIDOR/ords/ALIAS/fiesta/v1` (en apex.oracle.com: `https://apex.oracle.com/pls/apex/ALIAS/fiesta/v1`).
+
+| Método | Ruta | Cuerpo / parámetros | Respuesta |
+|---|---|---|---|
+| GET | `/admins` | | `[{id, nombre, esPrincipal, color}]` |
+| POST | `/admins` | `{nombre, pinHash, esPrincipal, color}` | `{id}` |
+| GET | `/admins/:id` | | `{id, nombre, pinHash, esPrincipal, color}` |
+| PUT | `/admins/:id/pin` | `{pinHash}` | `{ok}` |
+| DELETE | `/admins/:id` | | `{ok}` |
+| GET | `/evento` | | datos del evento activo |
+| PUT | `/evento` | campos a cambiar (`nombre`, `hora`, `lugar`, `mensaje`, `temaPase`…) | evento actualizado |
+| GET | `/evento/arte` | | imagen (PNG/JPG) |
+| PUT | `/evento/arte?nombre=arte.png` | bytes de la imagen (`Content-Type: image/png`) | `{ok}` |
+| GET | `/invitados` | | lista con estado de envío y llegada |
+| GET | `/invitados/resumen` | | `{total, llegaron, faltan, enviadas, pendientes}` |
+| POST | `/invitados/importar` | `{invitados:[{nombre, correo, whatsapp, area, token}]}` | `{creados, actualizados}` |
+| GET | `/invitados/:id` | | invitado con `token` del QR |
+| DELETE | `/invitados/:id` | | `{ok}` |
+| POST | `/checkin/qr` | `{token, valor, adminId}` | `{resultado: OK\|DUPLICADO\|INVALIDO, invitado}` |
+| POST | `/checkin/manual` | `{invitadoId, adminId}` | igual que el anterior |
+| GET | `/checkin/recientes?limite=30` | | últimas llegadas |
+| DELETE | `/checkin/:id` | | `{ok}` (deshace una llegada) |
+| POST | `/envios` | `{invitadoId, canal, estado, detalle, proveedorId, adminId}` | `{ok}` |
+
+Todas requieren `Authorization: Bearer TOKEN`. El token se pide así:
+
+```bash
+curl -u CLIENT_ID:CLIENT_SECRET -d grant_type=client_credentials https://SU-SERVIDOR/ords/ALIAS/oauth/token
 ```
 
-Tablas: `FN_EVENTO`, `FN_ADMIN`, `FN_INVITADO`, `FN_ENVIO`, `FN_ESCANEO`.
+Los errores se responden como `{"error":"mensaje"}` con código 400, 404 o 500.
 
-## 2. Configuración de la API
+## 2. Configuración del servidor (local)
+
+Requisitos: Node.js 22.
 
 ```bash
 npm install
 cp api/.env.example api/.env      # en Windows: copy api\.env.example api\.env
 ```
 
-Complete en `api/.env`: conexión Oracle, `JWT_SECRET`, SMTP y 360dialog.
+Complete en `api/.env`: `APEX_BASE_URL`, `APEX_CLIENT_ID`, `APEX_CLIENT_SECRET`, `JWT_SECRET`, y si ya los tiene, SMTP y 360dialog.
 
-Cree el primer administrador (principal):
+Primer administrador: ponga `ADMIN_INICIAL_NOMBRE` y `ADMIN_INICIAL_PIN` en `.env` (se crea al arrancar si no hay ninguno), o:
 
 ```bash
 npm run crear-admin -w api -- "Juan Stephens" 1234 --principal
@@ -60,49 +112,36 @@ Luego, desde la app (Ajustes › Administradores) se agregan los demás y se sub
 En dos terminales:
 
 ```bash
-npm run dev:api     # API en http://localhost:4000
-npm run dev:web     # Web en http://localhost:5173 (redirige /api a la API)
+npm run dev:api     # servidor en http://localhost:4000
+npm run dev:web     # web en http://localhost:5173 (redirige /api al servidor)
 ```
 
-## 4. Producción
+## 4. Despliegue en Railway
 
-```bash
-npm run build       # compila web y api
-npm start           # la API sirve también la web compilada en el mismo puerto
-```
-
-Publíquela detrás de un proxy con HTTPS (IIS, Nginx, etc.). En la tablet abra la URL y, opcionalmente, use
-"Agregar a pantalla de inicio" para que se vea como app a pantalla completa.
-
-## Despliegue en Railway
-
-El repositorio ya trae `railway.json`: Railway instala, ejecuta `npm run build` (web + API) y arranca con `npm start`.
-Un solo servicio sirve la app web y la API en el mismo dominio (no hace falta CORS).
+El repositorio trae `railway.json`: Railway instala, ejecuta `npm run build` (web + servidor) y arranca con `npm start`.
+Un solo servicio sirve la app web y el servidor en el mismo dominio.
 
 1. En Railway: **New Project › Deploy from GitHub repo** y elija este repositorio.
 2. En el servicio, pestaña **Variables**, agregue:
 
    | Variable | Valor |
    |---|---|
+   | `APEX_BASE_URL` | `https://SU-SERVIDOR/ords/ALIAS` (sin `/fiesta/v1`) |
+   | `APEX_CLIENT_ID` / `APEX_CLIENT_SECRET` | los que mostró `05_seguridad_oauth.sql` |
    | `JWT_SECRET` | texto largo y aleatorio |
    | `TZ` | `America/Panama` |
-   | `ORACLE_USER` / `ORACLE_PASSWORD` | usuario de la API en Oracle |
-   | `ORACLE_CONNECT_STRING` | `host-o-ip-publica:1521/NOMBRE_SERVICIO` |
    | `ADMIN_INICIAL_NOMBRE` / `ADMIN_INICIAL_PIN` | primer administrador (solo la primera vez) |
    | `SMTP_*` | datos del correo |
    | `D360_API_KEY`, `WA_TEMPLATE_INVITACION`, `WA_TEMPLATE_PASE`, `WA_TEMPLATE_LANG`, `WA_CODIGO_PAIS` | WhatsApp |
 
    No defina `PORT`: Railway lo asigna solo.
-3. **Settings › Networking › Generate Domain** para obtener la URL `https://...up.railway.app` (ya con HTTPS, necesario para la cámara).
+3. **Settings › Networking › Generate Domain** para obtener la URL `https://...up.railway.app` (con HTTPS, necesario para la cámara).
 4. Verifique:
    - `https://SU-DOMINIO/api/salud` → `{"ok":true}` (la app está arriba).
-   - `https://SU-DOMINIO/api/salud/db` → `{"oracle":"ok"}` (Railway llega a Oracle).
+   - `https://SU-DOMINIO/api/salud/apex` → `{"apex":"ok", ...}` (Railway llega a las APIs de APEX).
 5. Abra la URL en la tablet y entre con el administrador inicial. Luego borre `ADMIN_INICIAL_PIN`.
 
-**Importante – acceso a Oracle:** Railway corre en la nube, así que su Oracle debe aceptar conexiones desde internet
-(puerto 1521 publicado, o Oracle en la nube). Si el firewall solo permite IPs conocidas, active **Static Outbound IPs**
-en Railway (Settings › Networking, plan Pro) y autorice esas IPs. Si Oracle solo es accesible dentro de la red de la
-empresa, Railway no podrá conectarse; en ese caso conviene publicar la API en un servidor interno.
+En la tablet, use "Agregar a pantalla de inicio" para que se abra a pantalla completa, como una app.
 
 ## WhatsApp con 360dialog
 
@@ -128,18 +167,3 @@ Se envía con SMTP (`nodemailer`): el texto del mensaje + las 2 imágenes dentro
 
 Columnas reconocidas (encabezado en la fila 1): **Nombre** (obligatoria), **Correo**, **WhatsApp** (o Celular/Teléfono), **Área** (o Departamento).
 Descargue la plantilla desde la pantalla *Invitados*. Si un nombre ya existe se actualizan sus datos; los nuevos reciben código y QR.
-
-## Endpoints principales
-
-| Método | Ruta | Uso |
-|---|---|---|
-| GET | `/api/admins` | Lista de administradores (pantalla de ingreso) |
-| POST | `/api/auth/login` | `{ adminId, pin }` → token |
-| GET/PUT | `/api/evento` | Datos del evento |
-| GET/PUT | `/api/evento/arte` | Imagen 1 (arte) |
-| GET | `/api/invitados` · `/api/invitados/resumen` | Lista y contadores |
-| POST | `/api/invitados/importar` | Carga desde Excel |
-| GET | `/api/invitados/:id/pase.png` | Imagen 2 (pase QR) |
-| POST | `/api/checkin/qr` · `/api/checkin/manual` | Registrar llegada |
-| GET | `/api/checkin/recientes` | Últimas llegadas |
-| POST | `/api/envios` | `{ invitadoIds, canal: WHATSAPP\|CORREO\|AMBOS }` |

@@ -1,9 +1,9 @@
 /**
- * Crea un administrador.
+ * Crea un administrador mediante la API de APEX (usa las variables de api/.env).
  * Uso:  npm run crear-admin -w api -- "Juan Stephens" 1234 --principal
  */
 import bcrypt from 'bcryptjs';
-import { closeDb, exec, initDb } from '../db.js';
+import { apex } from '../apex.js';
 
 const [nombre, pin, ...flags] = process.argv.slice(2);
 if (!nombre || !pin || !/^\d{4,6}$/.test(pin)) {
@@ -11,11 +11,7 @@ if (!nombre || !pin || !/^\d{4,6}$/.test(pin)) {
   process.exit(1);
 }
 
-await initDb();
-await exec(`INSERT INTO FN_ADMIN (NOMBRE, PIN_HASH, ES_PRINCIPAL) VALUES (:n, :h, :p)`, {
-  n: nombre,
-  h: await bcrypt.hash(pin, 10),
-  p: flags.includes('--principal') ? 'S' : 'N',
+await apex('POST', '/admins', {
+  cuerpo: { nombre, pinHash: await bcrypt.hash(pin, 10), esPrincipal: flags.includes('--principal'), color: '#146B47' },
 });
 console.log(`Administrador "${nombre}" creado.`);
-await closeDb();

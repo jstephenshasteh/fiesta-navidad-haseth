@@ -1,7 +1,7 @@
 -- =====================================================================
 -- Fiesta navideña 2026 · Grupo De Haseth
--- Tablas para Oracle Database 12c o superior (usa columnas IDENTITY).
--- Ejecutar con el usuario/esquema que usará la API.
+-- Tablas para Oracle Database 19c o superior (usa columnas IDENTITY).
+-- Ejecutar en APEX › SQL Workshop › SQL Scripts (esquema del workspace).
 -- Prefijo FN_ = "Fiesta Navideña".
 -- =====================================================================
 
@@ -26,7 +26,7 @@ CREATE TABLE FN_EVENTO (
   ARTE_MIME       VARCHAR2(50),
   ARTE_NOMBRE     VARCHAR2(200),
   ACTIVO          CHAR(1)        DEFAULT 'S' NOT NULL CHECK (ACTIVO IN ('S','N')),
-  CREADO_EN       TIMESTAMP      DEFAULT SYSTIMESTAMP NOT NULL
+  CREADO_EN       TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
 );
 
 -- ---------------------------------------------------------------------
@@ -39,7 +39,7 @@ CREATE TABLE FN_ADMIN (
   ES_PRINCIPAL    CHAR(1)        DEFAULT 'N' NOT NULL CHECK (ES_PRINCIPAL IN ('S','N')),
   ACTIVO          CHAR(1)        DEFAULT 'S' NOT NULL CHECK (ACTIVO IN ('S','N')),
   COLOR           VARCHAR2(9)    DEFAULT '#146B47',
-  CREADO_EN       TIMESTAMP      DEFAULT SYSTIMESTAMP NOT NULL
+  CREADO_EN       TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
 );
 
 -- ---------------------------------------------------------------------
@@ -54,11 +54,11 @@ CREATE TABLE FN_INVITADO (
   CORREO           VARCHAR2(150),
   WHATSAPP         VARCHAR2(30),                    -- formato internacional sin +: 50761234567
   AREA             VARCHAR2(100),
-  LLEGADA_EN       TIMESTAMP,
+  LLEGADA_EN       TIMESTAMP WITH TIME ZONE,
   LLEGADA_ADMIN_ID NUMBER REFERENCES FN_ADMIN(ID),
   LLEGADA_VIA      VARCHAR2(10) CHECK (LLEGADA_VIA IN ('QR','NOMBRE')),
   ACTIVO           CHAR(1)        DEFAULT 'S' NOT NULL CHECK (ACTIVO IN ('S','N')),
-  CREADO_EN        TIMESTAMP      DEFAULT SYSTIMESTAMP NOT NULL,
+  CREADO_EN        TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL,
   CONSTRAINT FN_INVITADO_CODIGO_UK UNIQUE (EVENTO_ID, CODIGO),
   CONSTRAINT FN_INVITADO_TOKEN_UK  UNIQUE (TOKEN_QR)
 );
@@ -77,7 +77,7 @@ CREATE TABLE FN_ENVIO (
   DETALLE         VARCHAR2(1000),           -- mensaje de error o respuesta
   PROVEEDOR_ID    VARCHAR2(200),            -- id del mensaje en 360dialog / SMTP
   ADMIN_ID        NUMBER REFERENCES FN_ADMIN(ID),
-  ENVIADO_EN      TIMESTAMP      DEFAULT SYSTIMESTAMP NOT NULL
+  ENVIADO_EN      TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
 );
 
 CREATE INDEX FN_ENVIO_INVITADO_IX ON FN_ENVIO (INVITADO_ID, CANAL);
@@ -91,5 +91,5 @@ CREATE TABLE FN_ESCANEO (
   RESULTADO       VARCHAR2(12)   NOT NULL CHECK (RESULTADO IN ('OK','DUPLICADO','INVALIDO')),
   VALOR_LEIDO     VARCHAR2(200),
   ADMIN_ID        NUMBER REFERENCES FN_ADMIN(ID),
-  ESCANEADO_EN    TIMESTAMP      DEFAULT SYSTIMESTAMP NOT NULL
+  ESCANEADO_EN    TIMESTAMP WITH TIME ZONE DEFAULT SYSTIMESTAMP NOT NULL
 );

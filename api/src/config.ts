@@ -10,10 +10,11 @@ export const config = {
   port: Number(process.env.PORT ?? 4000),
   corsOrigin: (process.env.CORS_ORIGIN ?? '').split(',').map((s) => s.trim()).filter(Boolean),
   jwtSecret: req('JWT_SECRET', process.env.NODE_ENV === 'production' ? undefined : 'dev-secret'),
-  oracle: {
-    user: process.env.ORACLE_USER ?? '',
-    password: process.env.ORACLE_PASSWORD ?? '',
-    connectString: process.env.ORACLE_CONNECT_STRING ?? '',
+  apex: {
+    // URL base de ORDS con el alias del esquema, p. ej. https://apex.oracle.com/pls/apex/haseth
+    baseUrl: (process.env.APEX_BASE_URL ?? '').replace(/\/$/, ''),
+    clientId: process.env.APEX_CLIENT_ID ?? '',
+    clientSecret: process.env.APEX_CLIENT_SECRET ?? '',
   },
   smtp: {
     host: process.env.SMTP_HOST ?? '',
