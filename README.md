@@ -162,7 +162,7 @@ Los mensajes que inicia la empresa deben ser **plantillas aprobadas por Meta**. 
 | Variable `.env`          | Encabezado | Cuerpo sugerido |
 |--------------------------|-----------|-----------------|
 | `WA_TEMPLATE_INVITACION` | Imagen    | `Hola {{1}}, Grupo De Haseth tiene el placer de invitarte a nuestra Fiesta navideña 2026. ¡Te esperamos!` |
-| `WA_TEMPLATE_PASE`       | Imagen    | `{{1}}, este es tu pase de entrada personal. Presenta el código QR en la entrada del evento.` |
+| `WA_TEMPLATE_PASE`       | Imagen    | `Hola {{1}}, este es tu pase de entrada personal para la Fiesta navideña 2026. Presenta el código QR en la entrada del evento.` |
 
 La API sube el arte una vez, genera el pase de cada invitado, lo sube y envía ambas plantillas. Los números de 8 dígitos se completan con el código de país `WA_CODIGO_PAIS` (507).
 
