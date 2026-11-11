@@ -5,16 +5,34 @@ oracledb.outFormat = oracledb.OUT_FORMAT_OBJECT;
 oracledb.fetchAsString = [oracledb.CLOB];
 
 let pool: oracledb.Pool | null = null;
+let creando: Promise<oracledb.Pool> | null = null;
 
+/** Crea el pool la primera vez que se necesita (y lo reintenta si Oracle no respondía). */
+async function obtenerPool(): Promise<oracledb.Pool> {
+  if (pool) return pool;
+  creando ??= oracledb
+    .createPool({
+      user: config.oracle.user,
+      password: config.oracle.password,
+      connectString: config.oracle.connectString,
+      poolMin: 0,
+      poolMax: 10,
+      poolIncrement: 1,
+      queueTimeout: 15_000,
+    })
+    .then((p) => (pool = p))
+    .finally(() => (creando = null));
+  return creando;
+}
+
+/** Prueba la conexión al iniciar; si falla solo lo informa (la API sigue arriba y reintenta). */
 export async function initDb(): Promise<void> {
-  pool = await oracledb.createPool({
-    user: config.oracle.user,
-    password: config.oracle.password,
-    connectString: config.oracle.connectString,
-    poolMin: 1,
-    poolMax: 10,
-    poolIncrement: 1,
-  });
+  try {
+    await withConn((c) => c.execute('SELECT 1 FROM DUAL'));
+    console.log('Conexión a Oracle OK');
+  } catch (e) {
+    console.error('No se pudo conectar a Oracle:', e instanceof Error ? e.message : e);
+  }
 }
 
 export async function closeDb(): Promise<void> {
@@ -23,8 +41,7 @@ export async function closeDb(): Promise<void> {
 
 /** Ejecuta una función con una conexión del pool (sin auto-commit). */
 export async function withConn<T>(fn: (c: oracledb.Connection) => Promise<T>): Promise<T> {
-  if (!pool) throw new Error('La base de datos no está inicializada');
-  const conn = await pool.getConnection();
+  const conn = await (await obtenerPool()).getConnection();
   try {
     return await fn(conn);
   } finally {

@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import QRCode from 'qrcode';
 import { Resvg } from '@resvg/resvg-js';
 import { config } from '../config.js';
@@ -79,16 +80,26 @@ export function svgPase(p: DatosPase): string {
 </svg>`;
 }
 
+/** Fuentes incluidas en api/fonts (Montserrat y Playfair Display, licencia OFL). */
+const DIR_FUENTES = config.fontsDir
+  ? path.resolve(config.fontsDir)
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../fonts');
+
+let cacheFuentes: string[] | null = null;
 function fuentes(): string[] {
-  const dir = path.resolve(config.fontsDir);
-  if (!fs.existsSync(dir)) return [];
-  return fs.readdirSync(dir).filter((f) => /\.(ttf|otf)$/i.test(f)).map((f) => path.join(dir, f));
+  if (cacheFuentes) return cacheFuentes;
+  cacheFuentes = fs.existsSync(DIR_FUENTES)
+    ? fs.readdirSync(DIR_FUENTES).filter((f) => /\.(ttf|otf)$/i.test(f)).map((f) => path.join(DIR_FUENTES, f))
+    : [];
+  if (!cacheFuentes.length) console.warn(`No se encontraron fuentes en ${DIR_FUENTES}; el texto del pase puede no verse.`);
+  return cacheFuentes;
 }
 
 /** PNG del pase listo para enviar. */
 export function pngPase(p: DatosPase): Buffer {
   const r = new Resvg(svgPase(p), {
-    font: { loadSystemFonts: true, fontFiles: fuentes(), defaultFontFamily: 'Arial' },
+    // Solo las fuentes incluidas: así el pase se ve igual en Windows, en Railway o en cualquier servidor.
+    font: { loadSystemFonts: false, fontFiles: fuentes(), defaultFontFamily: 'Montserrat' },
     fitTo: { mode: 'original' },
   });
   return Buffer.from(r.render().asPng());

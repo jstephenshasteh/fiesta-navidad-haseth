@@ -1,1 +1,7 @@
-Coloque aquí archivos .ttf de Playfair Display y Montserrat (opcional).
+Fuentes usadas para dibujar el pase QR (las mismas del arte de la invitación):
+
+- Montserrat (Regular, SemiBold, Bold)      Licencia: OFL-Montserrat.txt
+- Playfair Display (SemiBold, Bold, Italic)  Licencia: OFL-PlayfairDisplay.txt
+
+Ambas tienen licencia SIL Open Font License 1.1, que permite incluirlas en el proyecto.
+El pase usa solo estas fuentes para verse igual en cualquier servidor (Windows, Railway, etc.).

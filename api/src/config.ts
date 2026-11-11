@@ -31,5 +31,5 @@ export const config = {
     templateLang: process.env.WA_TEMPLATE_LANG ?? 'es',
     codigoPais: process.env.WA_CODIGO_PAIS ?? '507',
   },
-  fontsDir: process.env.FONTS_DIR ?? './fonts',
+  fontsDir: process.env.FONTS_DIR ?? '',
 };

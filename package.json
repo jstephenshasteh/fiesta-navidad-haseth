@@ -12,6 +12,6 @@
     "typecheck": "npm run typecheck -w api && npm run typecheck -w web"
   },
   "engines": {
-    "node": ">=20"
+    "node": "22.x"
   }
 }
