@@ -1,0 +1,17 @@
+{
+  "name": "fiesta-navidena-haseth",
+  "version": "0.1.0",
+  "private": true,
+  "description": "App web para tablet: invitaciones (WhatsApp/correo) y registro de llegadas con QR · Fiesta navideña 2026 · Grupo De Haseth",
+  "workspaces": ["api", "web"],
+  "scripts": {
+    "dev:api": "npm run dev -w api",
+    "dev:web": "npm run dev -w web",
+    "build": "npm run build -w web && npm run build -w api",
+    "start": "npm run start -w api",
+    "typecheck": "npm run typecheck -w api && npm run typecheck -w web"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

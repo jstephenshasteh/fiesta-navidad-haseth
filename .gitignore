@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.log
+api/fonts/*.ttf
+api/fonts/*.otf
+.DS_Store
+Thumbs.db
