@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, descargar, guardarSesion, iniciales, leerSesion, urlApi, type Admin, type Evento } from '../api';
-import { Aviso, Avatar, Hoja, Pantalla } from '../components/Comunes';
+import { Aviso, Avatar, Cargando, Hoja, Pantalla } from '../components/Comunes';
 
 type CampoEvento = 'nombre' | 'fechaTexto' | 'dia' | 'mesCorto' | 'hora' | 'lugar' | 'salon' | 'vestimenta';
 const CAMPOS: { k: CampoEvento; t: string }[] = [
@@ -113,6 +113,7 @@ export default function Ajustes() {
       <div className="scroll ajustes">
         <span className="rotulo">Evento</span>
         <div className="tarjeta">
+          {!ev && !error && <Cargando texto="Cargando datos del evento…" />}
           {ev && CAMPOS.map((c) => (
             <label key={c.k} className="fila-ajuste">
               <span>{c.t}</span>

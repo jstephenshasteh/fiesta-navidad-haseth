@@ -92,6 +92,16 @@ export function Avatar({ texto, color, tam = 46 }: { texto: string; color?: stri
   );
 }
 
+/** Indicador de carga (para conexiones lentas). */
+export function Cargando({ texto = 'Cargando…' }: { texto?: string }) {
+  return (
+    <div className="cargando" role="status" aria-live="polite">
+      <span className="spinner" aria-hidden="true" />
+      <span>{texto}</span>
+    </div>
+  );
+}
+
 export function Aviso({ texto, tipo = 'error' }: { texto: string | null; tipo?: 'error' | 'ok' }) {
   if (!texto) return null;
   return <div className={'aviso ' + tipo} role={tipo === 'error' ? 'alert' : 'status'}>{texto}</div>;

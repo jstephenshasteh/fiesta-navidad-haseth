@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import readXlsxFile from 'read-excel-file';
 import { api, descargar, hora, iniciales, normalizar, urlApi, type Invitado } from '../api';
-import { Aviso, Avatar, Buscador, Hoja, Pantalla, Segmentado } from '../components/Comunes';
+import { Aviso, Avatar, Buscador, Cargando, Hoja, Pantalla, Segmentado } from '../components/Comunes';
 import { Icono } from '../components/Icono';
 
 type Filtro = 'todos' | 'pendientes' | 'enviadas' | 'llegaron';
@@ -18,6 +18,13 @@ const SINONIMOS: Record<Campo, string[]> = {
 };
 const ETIQUETA: Record<Campo, string> = { nombre: 'Nombre', correo: 'Correo', whatsapp: 'WhatsApp', area: 'Área' };
 
+/** 50761234567 → +507 6123-4567 (otros países se muestran con + y los dígitos). */
+function formatoTelefono(n: string | null): string | null {
+  if (!n) return null;
+  const m = n.match(/^507(\d{4})(\d{4})$/);
+  return m ? `+507 ${m[1]}-${m[2]}` : `+${n}`;
+}
+
 function enviada(i: Invitado) {
   return Boolean(i.waEnviadoEn || i.correoEnviadoEn);
 }
@@ -25,6 +32,7 @@ function enviada(i: Invitado) {
 export default function Invitados() {
   const nav = useNavigate();
   const [lista, setLista] = useState<Invitado[]>([]);
+  const [cargando, setCargando] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>('todos');
   const [q, setQ] = useState('');
   const [seleccionando, setSeleccionando] = useState(false);
@@ -42,8 +50,11 @@ export default function Invitados() {
   const cargar = useCallback(async () => {
     try {
       setLista(await api<Invitado[]>('/api/invitados'));
+      setError(null);
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setCargando(false);
     }
   }, []);
 
@@ -147,10 +158,10 @@ export default function Invitados() {
       </div>
 
       <Segmentado etiqueta="Filtrar" valor={filtro} onChange={setFiltro} opciones={[
-        { v: 'todos', t: `Todos ${conteo.todos}` },
-        { v: 'pendientes', t: `Pendientes ${conteo.pendientes}` },
-        { v: 'enviadas', t: `Enviadas ${conteo.enviadas}` },
-        { v: 'llegaron', t: `Llegaron ${conteo.llegaron}` },
+        { v: 'todos', t: `Todos ${cargando ? '…' : conteo.todos}` },
+        { v: 'pendientes', t: `Pendientes ${cargando ? '…' : conteo.pendientes}` },
+        { v: 'enviadas', t: `Enviadas ${cargando ? '…' : conteo.enviadas}` },
+        { v: 'llegaron', t: `Llegaron ${cargando ? '…' : conteo.llegaron}` },
       ]} />
 
       <Buscador valor={q} onChange={setQ} placeholder="Buscar invitado" />
@@ -163,9 +174,10 @@ export default function Invitados() {
       )}
 
       <section className="tarjeta scroll lista-flex" aria-label="Lista de invitados">
-        {visibles.length === 0 && <p className="tenue centro relleno">{lista.length ? 'Sin resultados.' : 'Aún no hay invitados. Importa tu Excel para empezar.'}</p>}
+        {cargando && lista.length === 0 && <Cargando texto="Cargando invitados…" />}
+        {!cargando && visibles.length === 0 && <p className="tenue centro relleno">{lista.length ? 'Sin resultados.' : 'Aún no hay invitados. Importa tu Excel para empezar.'}</p>}
         {visibles.map((i) => {
-          const contacto = [i.whatsapp ? 'WhatsApp' : '', i.correo ? 'Correo' : ''].filter(Boolean).join(' y ') || 'Sin contacto';
+          const tel = formatoTelefono(i.whatsapp);
           const canales = [i.waEnviadoEn ? 'WhatsApp' : '', i.correoEnviadoEn ? 'correo' : ''].filter(Boolean).join(' y ');
           return (
             <div key={i.id} className={'fila' + (sel.has(i.id) ? ' marcada' : '')}>
@@ -177,7 +189,11 @@ export default function Invitados() {
               <Avatar texto={iniciales(i.nombre)} />
               <span className="fila-texto">
                 <strong>{i.nombre}</strong>
-                <span className="tenue">{i.area ? `${i.area} · ` : ''}{i.codigo} · {contacto}</span>
+                <span className="tenue">{i.area ? `${i.area} · ` : ''}{i.codigo}</span>
+                <span className="tenue contacto">
+                  <span>WhatsApp: {tel ?? <em>sin número</em>}</span>
+                  <span>Correo: {i.correo ?? <em>sin correo</em>}</span>
+                </span>
               </span>
               <span className="derecha">
                 <span className={'pastilla ' + (canales ? 'ok' : 'pend')}>{canales ? `Enviada · ${canales}` : 'Sin enviar'}</span>

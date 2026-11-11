@@ -7,7 +7,8 @@ import { Icono } from '../components/Icono';
 type Canal = 'WHATSAPP' | 'CORREO' | 'AMBOS';
 interface Resultado { invitadoId: number; nombre: string; canal: 'WHATSAPP' | 'CORREO'; estado: 'ENVIADO' | 'ERROR' | 'OMITIDO'; detalle?: string }
 
-const LOTE = 5;
+// Invitados por petición. Cada lote espera unos segundos entre el arte y el pase de WhatsApp.
+const LOTE = 10;
 const VARIABLES = ['{nombre}', '{area}'];
 
 export default function Enviar() {
@@ -25,6 +26,7 @@ export default function Enviar() {
   const [enviando, setEnviando] = useState(false);
   const [progreso, setProgreso] = useState(0);
   const [resultados, setResultados] = useState<Resultado[] | null>(null);
+  const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
     Promise.all([api<Invitado[]>('/api/invitados'), api<Evento>('/api/evento'), api<{ whatsapp: boolean; whatsappModo?: string; correo: boolean }>('/api/envios/canales')])
@@ -36,7 +38,8 @@ export default function Enviar() {
         setMensaje(e.mensaje ?? '');
         if (!c.whatsapp && c.correo) setCanal('CORREO');
       })
-      .catch((e: Error) => setError(e.message));
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setCargando(false));
   }, []);
 
   // Destinatarios: los elegidos en Invitados o, si no hay, los que no tienen envío.
@@ -82,7 +85,7 @@ export default function Enviar() {
         <Link to="/invitados" className="volver"><Icono n="atras" size={20} /> Invitados</Link>
         <div className="fila-entre base">
           <h1>Enviar invitación</h1>
-          <span className="tenue">{destinatarios.length} {idsRuta?.length ? 'seleccionados' : 'pendientes de envío'}</span>
+          <span className="tenue">{cargando ? 'Cargando…' : `${destinatarios.length} ${idsRuta?.length ? 'seleccionados' : 'pendientes de envío'}`}</span>
         </div>
       </header>
 
@@ -93,7 +96,7 @@ export default function Enviar() {
         <div className="fila-entre">
           <button type="button" className="btn-redondo" aria-label="Anterior" disabled={destinatarios.length < 2} onClick={() => setIdx((i) => (i - 1 + destinatarios.length) % destinatarios.length)}><Icono n="atras" size={18} /></button>
           <span className="centro">
-            <strong>{actual?.nombre ?? 'Sin destinatarios'}</strong>
+            <strong>{cargando ? 'Cargando invitados…' : actual?.nombre ?? 'Sin destinatarios'}</strong>
             <span className="tenue chico bloque">Vista previa {destinatarios.length ? Math.min(idx, destinatarios.length - 1) + 1 : 0} de {destinatarios.length} · se envían 2 imágenes</span>
           </span>
           <button type="button" className="btn-redondo" aria-label="Siguiente" disabled={destinatarios.length < 2} onClick={() => setIdx((i) => (i + 1) % destinatarios.length)}><Icono n="adelante" size={18} /></button>
@@ -140,7 +143,7 @@ export default function Enviar() {
 
       {sinDestino > 0 && <p className="ambar chico">{sinDestino} invitado(s) no tienen dato de contacto para este canal y se omitirán.</p>}
 
-      <button type="button" className="btn-primario" disabled={!destinatarios.length || enviando || !!canalNoListo} onClick={enviar}>
+      <button type="button" className="btn-primario" disabled={cargando || !destinatarios.length || enviando || !!canalNoListo} onClick={enviar}>
         <Icono n="enviar" size={20} /> Enviar {destinatarios.length} invitaciones {via}
       </button>
 

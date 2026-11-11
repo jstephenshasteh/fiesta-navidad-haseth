@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api, guardarSesion, iniciales, leerSesion, primerNombre, type Admin } from '../api';
-import { Aviso, Avatar, Hoja } from '../components/Comunes';
+import { Aviso, Avatar, Cargando, Hoja } from '../components/Comunes';
 
 const TECLAS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
 
@@ -13,10 +13,14 @@ export default function Ingreso() {
   const [pin, setPin] = useState('');
   const [errorPin, setErrorPin] = useState<string | null>(null);
   const [cargando, setCargando] = useState(false);
+  const [cargandoAdmins, setCargandoAdmins] = useState(true);
 
   useEffect(() => {
     if (leerSesion()) nav('/escanear', { replace: true });
-    api<Admin[]>('/api/admins').then(setAdmins).catch((e: Error) => setError(e.message));
+    api<Admin[]>('/api/admins')
+      .then(setAdmins)
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setCargandoAdmins(false));
   }, [nav]);
 
   async function entrar(p: string) {
@@ -55,6 +59,7 @@ export default function Ingreso() {
         <h2>¿Quién eres?</h2>
         <p className="tenue">Elige tu nombre de administrador para entrar.</p>
         <Aviso texto={error} />
+        {cargandoAdmins && <Cargando texto="Cargando administradores…" />}
         <div className="rejilla-admins">
           {admins.map((a) => (
             <button key={a.id} type="button" className="tarjeta-admin" onClick={() => { setSel(a); setPin(''); setErrorPin(null); }}>

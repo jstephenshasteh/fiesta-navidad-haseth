@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import QrScanner from 'qr-scanner';
 import { api, hora, iniciales, leerSesion, normalizar, primerNombre, type Invitado, type Resumen } from '../api';
-import { Aviso, Avatar, Buscador, Hoja, Pantalla } from '../components/Comunes';
+import { Aviso, Avatar, Buscador, Cargando, Hoja, Pantalla } from '../components/Comunes';
 import { Icono } from '../components/Icono';
 
 interface Llegada { id: number; codigo: string; nombre: string; area: string | null; llegadaEn: string; llegadaVia: string; llegadaAdmin: string | null }
@@ -43,6 +43,8 @@ export default function Escanear() {
   const [lista, setLista] = useState<Invitado[]>([]);
   const [q, setQ] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [cargandoRecientes, setCargandoRecientes] = useState(true);
+  const [cargandoLista, setCargandoLista] = useState(false);
 
   const refrescar = useCallback(async () => {
     try {
@@ -52,6 +54,8 @@ export default function Escanear() {
       setError(null);
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setCargandoRecientes(false);
     }
   }, []);
 
@@ -114,10 +118,13 @@ export default function Escanear() {
     setQ('');
     setBuscando(true);
     ocupado.current = true;
+    setCargandoLista(true);
     try {
       setLista(await api<Invitado[]>('/api/invitados'));
     } catch (e) {
       setError((e as Error).message);
+    } finally {
+      setCargandoLista(false);
     }
   }
 
@@ -181,7 +188,8 @@ export default function Escanear() {
           <Link to="/invitados">Ver todas</Link>
         </div>
         <div className="scroll">
-          {recientes.length === 0 && <p className="tenue centro relleno">Aún no hay llegadas registradas.</p>}
+          {cargandoRecientes && recientes.length === 0 && <Cargando texto="Cargando llegadas…" />}
+          {!cargandoRecientes && recientes.length === 0 && <p className="tenue centro relleno">Aún no hay llegadas registradas.</p>}
           {recientes.map((l) => (
             <div key={l.id} className="fila">
               <Avatar texto={iniciales(l.nombre)} tam={42} />
@@ -198,6 +206,7 @@ export default function Escanear() {
       <Hoja abierta={buscando} alCerrar={cerrar} titulo="Buscar invitado" alta>
         <Buscador valor={q} onChange={setQ} placeholder="Nombre, apellido, área o código" />
         <div className="tarjeta scroll">
+          {cargandoLista && lista.length === 0 && <Cargando texto="Cargando invitados…" />}
           {filtrados.map((i) => (
             <button key={i.id} type="button" className="fila boton-fila" disabled={!!i.llegadaEn} onClick={() => registrarManual(i.id)}>
               <Avatar texto={iniciales(i.nombre)} tam={44} />

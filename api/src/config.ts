@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import tls from 'node:tls';
 
@@ -31,16 +32,12 @@ function configurarCertificados() {
 }
 configurarCertificados();
 
-function req(name: string, fallback?: string): string {
-  const v = process.env[name] ?? fallback;
-  if (v === undefined || v === '') throw new Error(`Falta la variable de entorno ${name}`);
-  return v;
-}
-
 export const config = {
   port: Number(process.env.PORT ?? 4000),
   corsOrigin: (process.env.CORS_ORIGIN ?? '').split(',').map((s) => s.trim()).filter(Boolean),
-  jwtSecret: req('JWT_SECRET', process.env.NODE_ENV === 'production' ? undefined : 'dev-secret'),
+  // Clave interna para recordar que un administrador ya ingresó su PIN. Se genera sola al arrancar
+  // (no hay que configurarla). Si el servidor se reinicia, solo hay que volver a poner el PIN.
+  jwtSecret: process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex'),
   apex: {
     // URL base de ORDS con el alias del esquema, p. ej. https://apex.oracle.com/pls/apex/haseth
     // (si viene con /fiesta/v1 al final, se quita: la app lo agrega sola)
@@ -63,6 +60,8 @@ export const config = {
     templatePase: process.env.WA_TEMPLATE_PASE ?? '',
     templateLang: process.env.WA_TEMPLATE_LANG ?? 'es',
     codigoPais: process.env.WA_CODIGO_PAIS ?? '507',
+    // Segundos de espera entre el arte y el pase, para que lleguen en ese orden
+    pausaSegundos: Number(process.env.WA_PAUSA_SEGUNDOS ?? 5),
   },
   fontsDir: process.env.FONTS_DIR ?? '',
 };

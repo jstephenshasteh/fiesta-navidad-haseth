@@ -98,27 +98,26 @@ async function idArte(arte: { contenido: Buffer; mime: string; nombre: string; c
   return arteCache.id;
 }
 
-export async function enviarWhatsapp(opts: {
-  para: string;
-  nombre: string;
-  codigo: string;
-  mensaje: string;
-  arte: { contenido: Buffer; mime: string; nombre: string; clave: string } | null;
-  pase: Buffer;
-}): Promise<string> {
-  const { templateInvitacion, templatePase } = config.whatsapp;
-  const ids: string[] = [];
-  const paseId = await subirMedia(opts.pase, 'image/png', 'pase-fiesta-navidena-2026.png');
+type ArteWa = { contenido: Buffer; mime: string; nombre: string; clave: string };
 
+/**
+ * Mensaje 1: el arte. Se envía primero a todos los invitados del lote y, unos segundos
+ * después, el pase (enviarPaseWhatsapp). WhatsApp no garantiza el orden de llegada y el arte
+ * pesa más, así que esa pausa evita que el pase llegue antes.
+ * Devuelve '' si no hay nada que enviar (sin arte o sin plantilla de invitación).
+ */
+export async function enviarArteWhatsapp(para: string, nombre: string, mensaje: string, arte: ArteWa | null): Promise<string> {
+  if (!arte) return '';
+  if (modoWhatsapp() === 'prueba') return enviarImagen(para, await idArte(arte), mensaje);
+  if (!config.whatsapp.templateInvitacion) return '';
+  return enviarPlantilla(para, config.whatsapp.templateInvitacion, await idArte(arte), [nombre]);
+}
+
+/** Mensaje 2: el pase QR personal. */
+export async function enviarPaseWhatsapp(para: string, nombre: string, pase: Buffer): Promise<string> {
+  const paseId = await subirMedia(pase, 'image/png', 'pase-fiesta-navidena-2026.png');
   if (modoWhatsapp() === 'prueba') {
-    if (opts.arte) ids.push(await enviarImagen(opts.para, await idArte(opts.arte), opts.mensaje));
-    ids.push(await enviarImagen(opts.para, paseId, 'Este es tu pase de entrada personal. Presenta el código QR en la entrada.'));
-    return ids.join(',');
+    return enviarImagen(para, paseId, 'Este es tu pase de entrada personal. Presenta el código QR en la entrada.');
   }
-
-  if (opts.arte && templateInvitacion) {
-    ids.push(await enviarPlantilla(opts.para, templateInvitacion, await idArte(opts.arte), [opts.nombre]));
-  }
-  ids.push(await enviarPlantilla(opts.para, templatePase, paseId, [opts.nombre]));
-  return ids.join(',');
+  return enviarPlantilla(para, config.whatsapp.templatePase, paseId, [nombre]);
 }
