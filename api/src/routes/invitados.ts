@@ -5,7 +5,7 @@ import { apex } from '../apex.js';
 import { requiereSesion } from '../auth.js';
 import { listarInvitados, obtenerEvento, obtenerInvitado } from '../services/datos.js';
 import { pngPase } from '../services/pase.js';
-import { normalizarCorreo, normalizarWhatsapp, nuevoToken } from '../util.js';
+import { limpiarTexto, normalizarCorreo, normalizarWhatsapp, nuevoToken } from '../util.js';
 
 export const invitadosRouter = Router();
 
@@ -21,7 +21,8 @@ const filaImport = z.object({
   nombre: z.string().trim().min(2).max(150),
   correo: z.string().nullish(),
   whatsapp: z.union([z.string(), z.number()]).nullish(),
-  area: z.string().trim().max(100).nullish(),
+  compania: z.string().trim().max(150).nullish(),
+  area: z.string().trim().max(150).nullish(),
 });
 
 /**
@@ -35,7 +36,8 @@ invitadosRouter.post('/invitados/importar', requiereSesion, async (req, res) => 
     nombre: f.nombre.replace(/\s+/g, ' '),
     correo: normalizarCorreo(f.correo ?? null),
     whatsapp: normalizarWhatsapp(f.whatsapp == null ? null : String(f.whatsapp)),
-    area: f.area || null,
+    compania: limpiarTexto(f.compania),
+    area: limpiarTexto(f.area),
     token: nuevoToken(),
   }));
   // Lotes de 500 para no enviar cuerpos enormes a ORDS.
@@ -56,6 +58,7 @@ const datosInvitado = z.object({
   nombre: z.string().trim().min(2, 'El nombre es obligatorio').max(150),
   correo: z.string().trim().max(150).nullish(),
   whatsapp: z.string().trim().max(30).nullish(),
+  compania: z.string().trim().max(100).nullish(),
   area: z.string().trim().max(100).nullish(),
 });
 
@@ -64,7 +67,7 @@ function limpiarContacto(d: { correo?: string | null; whatsapp?: string | null }
   const correo = d.correo ? normalizarCorreo(d.correo) : null;
   if (d.correo && !correo) throw Object.assign(new Error('El correo no es válido'), { status: 400 });
   const whatsapp = d.whatsapp ? normalizarWhatsapp(d.whatsapp) : null;
-  if (d.whatsapp && (!whatsapp || whatsapp.length < 8)) throw Object.assign(new Error('El número de WhatsApp no es válido'), { status: 400 });
+  if (d.whatsapp && !whatsapp) throw Object.assign(new Error('El número de WhatsApp no es válido (debe ser un celular de 8 dígitos que empiece con 6, o con código de país)'), { status: 400 });
   return { correo, whatsapp };
 }
 
@@ -73,17 +76,17 @@ invitadosRouter.post('/invitados', requiereSesion, async (req, res) => {
   const d = datosInvitado.parse(req.body);
   const { correo, whatsapp } = limpiarContacto(d);
   const r = await apex<{ id: number; codigo: string }>('POST', '/invitados', {
-    cuerpo: { nombre: d.nombre.replace(/\s+/g, ' '), correo, whatsapp, area: d.area || null, token: nuevoToken() },
+    cuerpo: { nombre: d.nombre.replace(/\s+/g, ' '), correo, whatsapp, compania: d.compania || null, area: d.area || null, token: nuevoToken() },
   });
   res.status(201).json(r);
 });
 
-/** Edita nombre, área, WhatsApp o correo de un invitado. */
+/** Edita nombre, compañía, área, WhatsApp o correo de un invitado. */
 invitadosRouter.put('/invitados/:id', requiereSesion, async (req, res) => {
   const d = datosInvitado.parse(req.body);
   const { correo, whatsapp } = limpiarContacto(d);
   await apex('PUT', `/invitados/${Number(req.params.id)}`, {
-    cuerpo: { nombre: d.nombre.replace(/\s+/g, ' '), correo, whatsapp, area: d.area || null },
+    cuerpo: { nombre: d.nombre.replace(/\s+/g, ' '), correo, whatsapp, compania: d.compania || null, area: d.area || null },
   });
   res.json({ ok: true });
 });
@@ -110,10 +113,11 @@ invitadosRouter.get('/invitados/plantilla.xlsx', async (_req, res) => {
     { header: 'Nombre', key: 'nombre', width: 32 },
     { header: 'Correo', key: 'correo', width: 32 },
     { header: 'WhatsApp', key: 'whatsapp', width: 18 },
+    { header: 'Compañía', key: 'compania', width: 18 },
     { header: 'Área', key: 'area', width: 22 },
   ];
   ws.getRow(1).font = { bold: true };
-  ws.addRow({ nombre: 'Nombre Apellido', correo: 'correo@ejemplo.com', whatsapp: '61234567', area: 'Finanzas' });
+  ws.addRow({ nombre: 'Nombre Apellido', correo: 'correo@ejemplo.com', whatsapp: '61234567', compania: 'Haseth', area: 'Finanzas' });
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', 'attachment; filename="plantilla_invitados.xlsx"');
   await wb.xlsx.write(res);
@@ -121,8 +125,16 @@ invitadosRouter.get('/invitados/plantilla.xlsx', async (_req, res) => {
 });
 
 /** Exporta invitados con su estado de envío y llegada. */
-invitadosRouter.get('/invitados/exportar.xlsx', requiereSesion, async (_req, res) => {
-  const filas = await listarInvitados();
+invitadosRouter.get('/invitados/exportar.xlsx', requiereSesion, async (req, res) => {
+  // ?filtro=pendientes | enviadas | llegaron  (sin filtro: todos)  &compania=…  &area=…
+  const filtro = String(req.query.filtro ?? 'todos');
+  const compania = typeof req.query.compania === 'string' ? req.query.compania : null;
+  const area = typeof req.query.area === 'string' ? req.query.area : null;
+  const enviada = (f: { waEnviadoEn: string | null; correoEnviadoEn: string | null }) => Boolean(f.waEnviadoEn || f.correoEnviadoEn);
+  const filas = (await listarInvitados()).filter((f) =>
+    (filtro === 'pendientes' ? !enviada(f) : filtro === 'enviadas' ? enviada(f) : filtro === 'llegaron' ? Boolean(f.llegadaEn) : true) &&
+    (compania === null || (f.compania ?? '') === compania) &&
+    (area === null || (f.area ?? '') === area));
   const fecha = (iso: string | null) =>
     iso ? new Date(iso).toLocaleString('es-PA', { timeZone: process.env.TZ || 'America/Panama' }) : '';
   const wb = new ExcelJS.Workbook();
@@ -130,7 +142,8 @@ invitadosRouter.get('/invitados/exportar.xlsx', requiereSesion, async (_req, res
   ws.columns = [
     { header: 'Código', key: 'codigo', width: 10 },
     { header: 'Nombre', key: 'nombre', width: 32 },
-    { header: 'Área', key: 'area', width: 20 },
+    { header: 'Compañía', key: 'compania', width: 16 },
+    { header: 'Área', key: 'area', width: 24 },
     { header: 'Correo', key: 'correo', width: 30 },
     { header: 'WhatsApp', key: 'whatsapp', width: 16 },
     { header: 'Enviado WhatsApp', key: 'waEnviadoEn', width: 22 },
@@ -144,7 +157,10 @@ invitadosRouter.get('/invitados/exportar.xlsx', requiereSesion, async (_req, res
     ws.addRow({ ...f, waEnviadoEn: fecha(f.waEnviadoEn), correoEnviadoEn: fecha(f.correoEnviadoEn), llegadaEn: fecha(f.llegadaEn) }),
   );
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-  res.setHeader('Content-Disposition', 'attachment; filename="llegadas_fiesta_2026.xlsx"');
+  const partes = [filtro === 'todos' ? 'llegadas' : `invitados_${filtro}`, compania, area].filter(Boolean)
+    .map((p) => p!.normalize('NFD').replace(/[^\w]+/g, '_').replace(/^_|_$/g, '').toLowerCase());
+  const nombre = `${partes.join('_')}_fiesta_2026.xlsx`;
+  res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
   await wb.xlsx.write(res);
   res.end();
 });

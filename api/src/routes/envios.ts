@@ -76,7 +76,7 @@ enviosRouter.post('/envios', requiereSesion, async (req, res) => {
     lote.push({
       inv,
       pase: pngPase({ nombre: inv.nombre, codigo: inv.codigo, token: inv.token, evento: ev }),
-      mensaje: llenarPlantilla(sinCodigo, { nombre: inv.nombre, area: inv.area ?? '' }),
+      mensaje: llenarPlantilla(sinCodigo, { nombre: inv.nombre, area: inv.area ?? '', compania: inv.compania ?? '' }),
       idsWa: [] as string[],
       errorWa: null as string | null,
     });

@@ -53,6 +53,7 @@ CREATE TABLE FN_INVITADO (
   NOMBRE           VARCHAR2(150)  NOT NULL,
   CORREO           VARCHAR2(150),
   WHATSAPP         VARCHAR2(30),                    -- formato internacional sin +: 50761234567
+  COMPANIA         VARCHAR2(100),                   -- empresa del grupo: Haseth, Botica, Laboratorio…
   AREA             VARCHAR2(100),
   LLEGADA_EN       TIMESTAMP WITH TIME ZONE,
   LLEGADA_ADMIN_ID NUMBER REFERENCES FN_ADMIN(ID),

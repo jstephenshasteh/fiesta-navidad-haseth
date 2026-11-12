@@ -35,6 +35,7 @@ export interface Invitado {
   nombre: string;
   correo: string | null;
   whatsapp: string | null;
+  compania: string | null;
   area: string | null;
 }
 
@@ -44,6 +45,7 @@ export interface FilaInvitado {
   nombre: string;
   correo: string | null;
   whatsapp: string | null;
+  compania: string | null;
   area: string | null;
   llegadaEn: string | null;
   llegadaVia: string | null;

@@ -1,24 +1,45 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import readXlsxFile from 'read-excel-file';
+import readXlsxFile, { readSheetNames } from 'read-excel-file';
 import { api, descargar, hora, iniciales, normalizar, urlApi, type Invitado } from '../api';
 import { Aviso, Avatar, Buscador, Cargando, Hoja, Pantalla, Segmentado } from '../components/Comunes';
 import { Icono } from '../components/Icono';
 
 type Filtro = 'todos' | 'pendientes' | 'enviadas' | 'llegaron';
-type Campo = 'nombre' | 'correo' | 'whatsapp' | 'area';
-interface FilaExcel { nombre: string; correo: string | null; whatsapp: string | null; area: string | null }
-interface Ficha { id: number | null; nombre: string; area: string; whatsapp: string; correo: string }
-const FICHA_VACIA: Ficha = { id: null, nombre: '', area: '', whatsapp: '', correo: '' };
+type Campo = 'nombre' | 'correo' | 'whatsapp' | 'compania' | 'area';
+interface FilaExcel { nombre: string; correo: string | null; whatsapp: string | null; compania: string | null; area: string | null }
+interface Ficha { id: number | null; nombre: string; compania: string; area: string; whatsapp: string; correo: string }
+const FICHA_VACIA: Ficha = { id: null, nombre: '', compania: '', area: '', whatsapp: '', correo: '' };
+/** Resumen de cada hoja leída del Excel. */
+interface HojaLeida { hoja: string; filas: number; columnas: string[]; compania: string | null; error?: string }
+const NOMBRE_FILTRO: Record<'pendientes' | 'enviadas' | 'llegaron', string> = { pendientes: 'pendientes', enviadas: 'enviadas', llegaron: 'llegadas' };
 
 /** Reconoce las columnas del Excel por su encabezado. */
 const SINONIMOS: Record<Campo, string[]> = {
   nombre: ['nombre', 'nombre completo', 'invitado', 'colaborador', 'nombres'],
   correo: ['correo', 'correo electronico', 'email', 'e-mail', 'mail'],
   whatsapp: ['whatsapp', 'celular', 'telefono', 'movil', 'numero', 'telefono celular'],
-  area: ['area', 'departamento', 'depto', 'gerencia', 'empresa'],
+  compania: ['compania', 'empresa', 'sociedad', 'razon social'],
+  area: ['area', 'departamento', 'depto', 'gerencia'],
 };
-const ETIQUETA: Record<Campo, string> = { nombre: 'Nombre', correo: 'Correo', whatsapp: 'WhatsApp', area: 'Área' };
+const ETIQUETA: Record<Campo, string> = { nombre: 'Nombre', correo: 'Correo', whatsapp: 'WhatsApp', compania: 'Compañía', area: 'Área' };
+
+/** Quita el código del inicio ("0102 - GERENCIA") y pasa a tipo título si viene en mayúsculas (igual que el servidor). */
+const MINUSCULAS = new Set(['de', 'del', 'la', 'las', 'el', 'los', 'y', 'e', 'en', 'a', 'para', 'por', 'con']);
+function limpiarTexto(v: string | null): string | null {
+  let t = (v ?? '').replace(/\s+/g, ' ').trim().replace(/^\d+\s*[-–.]\s*/, '').trim();
+  if (!t) return null;
+  if (t === t.toUpperCase() && /[A-ZÁÉÍÓÚÑ]{4}/.test(t)) {
+    t = t.toLowerCase().split(' ').map((p, i) => (i > 0 && MINUSCULAS.has(p) ? p : p.replace(/(^|[-/(])(\p{L})/gu, (_m, a: string, l: string) => a + l.toUpperCase()))).join(' ');
+  }
+  return t;
+}
+
+/** "Compañía · Área" con lo que haya. */
+const lugar = (i: { compania: string | null; area: string | null }) => [i.compania, i.area].filter(Boolean).join(' · ');
+
+/** Valores distintos, ordenados alfabéticamente. */
+const distintos = (v: (string | null)[]) => [...new Set(v.filter((x): x is string => Boolean(x)))].sort((a, b) => a.localeCompare(b, 'es'));
 
 /** 50761234567 → +507 6123-4567 (otros países se muestran con + y los dígitos). */
 function formatoTelefono(n: string | null): string | null {
@@ -36,6 +57,8 @@ export default function Invitados() {
   const [lista, setLista] = useState<Invitado[]>([]);
   const [cargando, setCargando] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>('todos');
+  const [fCompania, setFCompania] = useState('');
+  const [fArea, setFArea] = useState('');
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +66,7 @@ export default function Invitados() {
 
   const [importando, setImportando] = useState(false);
   const [archivo, setArchivo] = useState<string | null>(null);
-  const [mapa, setMapa] = useState<{ col: string; campo: Campo }[]>([]);
+  const [hojas, setHojas] = useState<HojaLeida[]>([]);
   const [filas, setFilas] = useState<FilaExcel[]>([]);
   const [errorExcel, setErrorExcel] = useState<string | null>(null);
   const [subiendo, setSubiendo] = useState(false);
@@ -65,22 +88,49 @@ export default function Invitados() {
 
   useEffect(() => { void cargar(); }, [cargar]);
 
+  // Opciones de los filtros: las áreas dependen de la compañía elegida.
+  const companias = useMemo(() => distintos(lista.map((i) => i.compania)), [lista]);
+  const areas = useMemo(() => distintos(lista.filter((i) => !fCompania || i.compania === fCompania).map((i) => i.area)), [lista, fCompania]);
+  const hayFiltroGrupo = Boolean(fCompania || fArea);
+
+  function elegirCompania(c: string) {
+    setFCompania(c);
+    if (fArea && !lista.some((i) => (!c || i.compania === c) && i.area === fArea)) setFArea('');
+  }
+
+  // Invitados de la compañía/área elegida; los conteos y la lista parten de aquí.
+  const base = useMemo(() => lista.filter((i) =>
+    (!fCompania || i.compania === fCompania) && (!fArea || i.area === fArea)), [lista, fCompania, fArea]);
+
   const conteo = useMemo(() => ({
-    todos: lista.length,
-    pendientes: lista.filter((i) => !enviada(i)).length,
-    enviadas: lista.filter(enviada).length,
-    llegaron: lista.filter((i) => i.llegadaEn).length,
-  }), [lista]);
+    todos: base.length,
+    pendientes: base.filter((i) => !enviada(i)).length,
+    enviadas: base.filter(enviada).length,
+    llegaron: base.filter((i) => i.llegadaEn).length,
+  }), [base]);
 
   const visibles = useMemo(() => {
     const n = normalizar(q.trim());
-    return lista.filter((i) => {
+    return base.filter((i) => {
       if (filtro === 'pendientes' && enviada(i)) return false;
       if (filtro === 'enviadas' && !enviada(i)) return false;
       if (filtro === 'llegaron' && !i.llegadaEn) return false;
-      return !n || normalizar(i.nombre).includes(n) || normalizar(i.area).includes(n) || normalizar(i.codigo).includes(n);
+      return !n || normalizar(i.nombre).includes(n) || normalizar(i.area).includes(n) || normalizar(i.compania).includes(n) || normalizar(i.codigo).includes(n);
     });
-  }, [lista, filtro, q]);
+  }, [base, filtro, q]);
+
+  /** Exporta respetando estado, compañía y área. */
+  function exportar() {
+    const p = new URLSearchParams();
+    if (filtro !== 'todos') p.set('filtro', filtro);
+    if (fCompania) p.set('compania', fCompania);
+    if (fArea) p.set('area', fArea);
+    const partes = [filtro === 'todos' ? 'llegadas' : `invitados_${filtro}`, fCompania, fArea].filter(Boolean)
+      .map((t) => t.normalize('NFD').replace(/[^\w]+/g, '_').replace(/^_|_$/g, '').toLowerCase());
+    const qs = p.toString();
+    void descargar(`/api/invitados/exportar.xlsx${qs ? `?${qs}` : ''}`, `${partes.join('_')}_fiesta_2026.xlsx`);
+  }
+  const grupo = [fCompania, fArea].filter(Boolean).join(' · ');
 
   function alternar(id: number) {
     setSel((s) => {
@@ -90,29 +140,50 @@ export default function Invitados() {
     });
   }
 
+  /** Lee todas las hojas. Si el libro tiene varias y no hay columna Compañía, el nombre de la hoja es la compañía. */
   async function leerExcel(f: File) {
     setErrorExcel(null);
     setArchivo(f.name);
     try {
-      const rows = await readXlsxFile(f);
-      if (rows.length < 2) throw new Error('El archivo no tiene filas de invitados.');
-      const encabezados = rows[0].map((c) => normalizar(String(c ?? '')).trim());
-      const indices: Partial<Record<Campo, number>> = {};
-      const m: { col: string; campo: Campo }[] = [];
-      (Object.keys(SINONIMOS) as Campo[]).forEach((campo) => {
-        const i = encabezados.findIndex((h) => SINONIMOS[campo].includes(h));
-        if (i >= 0) { indices[campo] = i; m.push({ col: String(rows[0][i]), campo }); }
-      });
-      if (indices.nombre === undefined) throw new Error('No se encontró la columna "Nombre". Usa la plantilla.');
-      const v = (row: unknown[], c: Campo) => (indices[c] === undefined ? null : row[indices[c]!] == null ? null : String(row[indices[c]!]).trim() || null);
-      const datos = rows.slice(1)
-        .map((row) => ({ nombre: v(row, 'nombre') ?? '', correo: v(row, 'correo'), whatsapp: v(row, 'whatsapp'), area: v(row, 'area') }))
-        .filter((r) => r.nombre.length >= 2);
-      setMapa(m);
+      const nombres = await readSheetNames(f);
+      const varias = nombres.length > 1;
+      const datos: FilaExcel[] = [];
+      const resumen: HojaLeida[] = [];
+      for (const hoja of nombres) {
+        const rows = await readXlsxFile(f, { sheet: hoja });
+        // El encabezado es la primera fila (de las 10 primeras) que tenga una columna de nombre.
+        const iEnc = rows.slice(0, 10).findIndex((row) => row.some((c) => SINONIMOS.nombre.includes(normalizar(String(c ?? '')).trim())));
+        if (iEnc < 0) {
+          if (rows.some((row) => row.some((c) => c != null))) resumen.push({ hoja, filas: 0, columnas: [], compania: null, error: 'sin columna "Nombre"' });
+          continue;
+        }
+        const encabezados = rows[iEnc].map((c) => normalizar(String(c ?? '')).trim());
+        const indices: Partial<Record<Campo, number>> = {};
+        const columnas: string[] = [];
+        (Object.keys(SINONIMOS) as Campo[]).forEach((campo) => {
+          const i = encabezados.findIndex((h) => SINONIMOS[campo].includes(h));
+          if (i >= 0) { indices[campo] = i; columnas.push(`${String(rows[iEnc][i]).trim()} → ${ETIQUETA[campo]}`); }
+        });
+        const companiaHoja = indices.compania === undefined && varias ? hoja.trim() : null;
+        const v = (row: unknown[], c: Campo) => (indices[c] === undefined || row[indices[c]!] == null ? null : String(row[indices[c]!]).trim() || null);
+        const deHoja = rows.slice(iEnc + 1)
+          .map((row) => ({
+            nombre: (v(row, 'nombre') ?? '').replace(/\s+/g, ' '),
+            correo: v(row, 'correo'),
+            whatsapp: v(row, 'whatsapp'),
+            compania: limpiarTexto(v(row, 'compania') ?? companiaHoja),
+            area: limpiarTexto(v(row, 'area')),
+          }))
+          .filter((r) => r.nombre.length >= 2);
+        datos.push(...deHoja);
+        resumen.push({ hoja, filas: deHoja.length, columnas, compania: companiaHoja });
+      }
+      if (!datos.length) throw new Error('No se encontró ninguna hoja con columna "Nombre". Usa la plantilla.');
+      setHojas(resumen);
       setFilas(datos);
     } catch (e) {
       setFilas([]);
-      setMapa([]);
+      setHojas([]);
       setErrorExcel((e as Error).message);
     }
   }
@@ -138,15 +209,15 @@ export default function Invitados() {
   function abrirFicha(i?: Invitado) {
     setErrorFicha(null);
     setFicha(i
-      ? { id: i.id, nombre: i.nombre, area: i.area ?? '', whatsapp: formatoTelefono(i.whatsapp) ?? '', correo: i.correo ?? '' }
-      : { ...FICHA_VACIA });
+      ? { id: i.id, nombre: i.nombre, compania: i.compania ?? '', area: i.area ?? '', whatsapp: formatoTelefono(i.whatsapp) ?? '', correo: i.correo ?? '' }
+      : { ...FICHA_VACIA, compania: fCompania, area: fArea });
   }
 
   async function guardarFicha() {
     if (!ficha) return;
     setGuardando(true);
     setErrorFicha(null);
-    const datos = { nombre: ficha.nombre.trim(), area: ficha.area.trim() || null, whatsapp: ficha.whatsapp.trim() || null, correo: ficha.correo.trim() || null };
+    const datos = { nombre: ficha.nombre.trim(), compania: ficha.compania.trim() || null, area: ficha.area.trim() || null, whatsapp: ficha.whatsapp.trim() || null, correo: ficha.correo.trim() || null };
     try {
       if (ficha.id) {
         await api(`/api/invitados/${ficha.id}`, { method: 'PUT', body: datos });
@@ -202,8 +273,32 @@ export default function Invitados() {
 
       <div className="fila-gap envolver">
         <a className="enlace" href={urlApi('/api/invitados/plantilla.xlsx')}><Icono n="bajar" size={18} /> Descargar plantilla Excel</a>
-        <button type="button" className="btn-texto" onClick={() => descargar('/api/invitados/exportar.xlsx', 'llegadas_fiesta_2026.xlsx')}>Exportar lista y llegadas</button>
+        <button type="button" className="btn-texto" onClick={exportar}>
+          {filtro === 'todos' && !hayFiltroGrupo
+            ? 'Exportar lista y llegadas'
+            : `Exportar ${filtro === 'todos' ? 'invitados' : NOMBRE_FILTRO[filtro]}${grupo ? ` de ${grupo}` : ''} a Excel (${conteo[filtro]})`}
+        </button>
       </div>
+
+      {(companias.length > 0 || areas.length > 0) && (
+        <div className="filtros-grupo">
+          <label className="filtro-select">
+            <span>Compañía</span>
+            <select value={fCompania} onChange={(e) => elegirCompania(e.target.value)}>
+              <option value="">Todas ({lista.length})</option>
+              {companias.map((c) => <option key={c} value={c}>{c} ({lista.filter((i) => i.compania === c).length})</option>)}
+            </select>
+          </label>
+          <label className="filtro-select">
+            <span>Área</span>
+            <select value={fArea} onChange={(e) => setFArea(e.target.value)}>
+              <option value="">Todas</option>
+              {areas.map((a) => <option key={a} value={a}>{a} ({lista.filter((i) => i.area === a && (!fCompania || i.compania === fCompania)).length})</option>)}
+            </select>
+          </label>
+          {hayFiltroGrupo && <button type="button" className="btn-texto" onClick={() => { setFCompania(''); setFArea(''); }}>Quitar filtros</button>}
+        </div>
+      )}
 
       <Segmentado etiqueta="Filtrar" valor={filtro} onChange={setFiltro} opciones={[
         { v: 'todos', t: `Todos ${cargando ? '…' : conteo.todos}` },
@@ -221,9 +316,26 @@ export default function Invitados() {
         </div>
       )}
 
+      {filtro === 'pendientes' && !cargando && (
+        conteo.pendientes > 0 ? (
+          <div className="aviso-pendientes">
+            <span>
+              <strong>{conteo.pendientes} {conteo.pendientes === 1 ? 'invitado' : 'invitados'}{grupo ? ` de ${grupo}` : ''} {conteo.pendientes === 1 ? 'aún no ha' : 'aún no han'} recibido la invitación</strong>
+              <span className="tenue chico bloque">No se les ha enviado nada todavía, o el envío falló. Los que tienen error también aparecen aquí.</span>
+            </span>
+            <button type="button" className="btn-pildora" disabled={visibles.length === 0}
+              onClick={() => nav('/enviar', { state: { ids: visibles.map((i) => i.id) } })}>
+              <Icono n="enviar" size={18} /> Enviar a {visibles.length === conteo.pendientes ? 'todos' : `estos ${visibles.length}`}
+            </button>
+          </div>
+        ) : (
+          <div className="aviso ok">Todos los invitados{grupo ? ` de ${grupo}` : ''} ya recibieron la invitación.</div>
+        )
+      )}
+
       <section className="tarjeta scroll lista-flex" aria-label="Lista de invitados">
         {cargando && lista.length === 0 && <Cargando texto="Cargando invitados…" />}
-        {!cargando && visibles.length === 0 && <p className="tenue centro relleno">{lista.length ? 'Sin resultados.' : 'Aún no hay invitados. Agrégalos uno por uno o importa tu Excel.'}</p>}
+        {!cargando && visibles.length === 0 && <p className="tenue centro relleno">{lista.length ? (hayFiltroGrupo ? `No hay invitados que coincidan en ${grupo}.` : 'Sin resultados.') : 'Aún no hay invitados. Agrégalos uno por uno o importa tu Excel.'}</p>}
         {visibles.map((i) => {
           const tel = formatoTelefono(i.whatsapp);
           const canales = [i.waEnviadoEn ? 'WhatsApp' : '', i.correoEnviadoEn ? 'correo' : ''].filter(Boolean).join(' y ');
@@ -236,7 +348,7 @@ export default function Invitados() {
               <Avatar texto={iniciales(i.nombre)} />
               <span className="fila-texto">
                 <strong>{i.nombre}</strong>
-                <span className="tenue">{i.area ? `${i.area} · ` : ''}{i.codigo}</span>
+                <span className="tenue">{[lugar(i), i.codigo].filter(Boolean).join(' · ')}</span>
                 <span className="tenue contacto">
                   <span>WhatsApp: {tel ?? <em>sin número</em>}</span>
                   <span>Correo: {i.correo ?? <em>sin correo</em>}</span>
@@ -258,8 +370,15 @@ export default function Invitados() {
             <label className="campo">Nombre completo
               <input value={ficha.nombre} onChange={(e) => setFicha({ ...ficha, nombre: e.target.value })} autoComplete="off" required minLength={2} />
             </label>
+            <label className="campo">Compañía
+              <input value={ficha.compania} onChange={(e) => setFicha({ ...ficha, compania: e.target.value })} list="lista-companias" autoComplete="off" placeholder="Haseth, Botica, Laboratorio…" />
+              <datalist id="lista-companias">{companias.map((c) => <option key={c} value={c} />)}</datalist>
+            </label>
             <label className="campo">Área o departamento
-              <input value={ficha.area} onChange={(e) => setFicha({ ...ficha, area: e.target.value })} autoComplete="off" />
+              <input value={ficha.area} onChange={(e) => setFicha({ ...ficha, area: e.target.value })} list="lista-areas" autoComplete="off" />
+              <datalist id="lista-areas">
+                {distintos(lista.filter((i) => !ficha.compania || i.compania === ficha.compania).map((i) => i.area)).map((a) => <option key={a} value={a} />)}
+              </datalist>
             </label>
             <label className="campo">WhatsApp
               <input type="tel" inputMode="tel" value={ficha.whatsapp} onChange={(e) => setFicha({ ...ficha, whatsapp: e.target.value })} placeholder="6123-4567" autoComplete="off" />
@@ -284,19 +403,24 @@ export default function Invitados() {
           <span className="icono-xls">XLS</span>
           <span className="fila-texto">
             <strong>{archivo ?? 'Elegir archivo'}</strong>
-            <span className="tenue">Toca para elegir un archivo .xlsx con columnas Nombre, Correo, WhatsApp y Área</span>
+            <span className="tenue">Toca para elegir un archivo .xlsx con columnas Nombre, Correo, WhatsApp, Compañía y Área. Si el libro tiene una hoja por compañía, el nombre de cada hoja se usa como compañía.</span>
           </span>
           <input type="file" accept=".xlsx" className="oculto" onChange={(e) => { const f = e.target.files?.[0]; if (f) void leerExcel(f); }} />
         </label>
         <Aviso texto={errorExcel} />
-        {mapa.length > 0 && (
+        {hojas.length > 0 && (
           <>
-            <span className="rotulo">Columnas detectadas</span>
+            <span className="rotulo">{hojas.length === 1 ? 'Hoja leída' : `${hojas.length} hojas leídas`}</span>
             <div className="tarjeta">
-              {mapa.map((m) => (
-                <div key={m.campo} className="fila-ajuste">
-                  <span>{m.col}</span>
-                  <span className="verde negrita"><Icono n="adelante" size={14} /> {ETIQUETA[m.campo]}</span>
+              {hojas.map((h) => (
+                <div key={h.hoja} className="fila-ajuste hoja-leida">
+                  <span className="fila-texto">
+                    <strong>{h.hoja}</strong>
+                    <span className="tenue chico">
+                      {h.error ?? [h.compania ? `Compañía: ${h.compania}` : '', ...h.columnas].filter(Boolean).join(' · ')}
+                    </span>
+                  </span>
+                  <span className={h.error ? 'rojo negrita' : 'verde negrita'}>{h.error ? 'Omitida' : `${h.filas} invitados`}</span>
                 </div>
               ))}
             </div>
@@ -304,7 +428,7 @@ export default function Invitados() {
               <span className="caja ok">{filas.length} filas válidas</span>
               {sinContacto > 0 && <span className="caja pend">{sinContacto} sin WhatsApp ni correo</span>}
             </div>
-            <p className="tenue chico">Si un nombre ya existe, se actualizan su correo, WhatsApp y área. Los nuevos reciben su código y QR automáticamente.</p>
+            <p className="tenue chico">Si un nombre ya existe, se actualizan su correo, WhatsApp, compañía y área. Los nuevos reciben su código y QR automáticamente.</p>
             <button type="button" className="btn-primario ancho" disabled={!filas.length || subiendo} onClick={importar}>
               {subiendo ? 'Importando…' : `Importar ${filas.length} invitados`}
             </button>

@@ -47,6 +47,7 @@ En APEX, entre a **SQL Workshop › SQL Scripts**, suba cada archivo de `db/` y 
 | `03_paquete_fn_api.sql` | Paquete PL/SQL `FN_API` con toda la lógica (responde JSON) |
 | `04_servicios_rest.sql` | Publica el módulo REST `fiesta.v1` (aparece en **SQL Workshop › RESTful Services**) |
 | `06_agregar_editar_invitados.sql` | Agrega las APIs para crear y editar invitados desde la app (solo si ya tenía instalado el módulo; antes vuelva a ejecutar `03`) |
+| `08_compania.sql` | Agrega el campo **Compañía** a los invitados (solo si ya tenía las tablas; después vuelva a ejecutar `03`) |
 | `05_seguridad_oauth.sql` | Protege el módulo con OAuth2 y crea el cliente `fiesta_railway`. **Copie el CLIENT_ID y CLIENT_SECRET que muestra** |
 
 Requisitos: Oracle 19c o superior y ORDS 23.3 o superior (en apex.oracle.com y Autonomous Database ya se cumple).
@@ -72,7 +73,7 @@ URL base: `https://SU-SERVIDOR/ords/ALIAS/fiesta/v1` (en apex.oracle.com: `https
 | PUT | `/evento/arte?nombre=arte.png` | bytes de la imagen (`Content-Type: image/png`) | `{ok}` |
 | GET | `/invitados` | | lista con estado de envío y llegada |
 | GET | `/invitados/resumen` | | `{total, llegaron, faltan, enviadas, pendientes}` |
-| POST | `/invitados/importar` | `{invitados:[{nombre, correo, whatsapp, area, token}]}` | `{creados, actualizados}` |
+| POST | `/invitados/importar` | `{invitados:[{nombre, correo, whatsapp, compania, area, token}]}` | `{creados, actualizados}` |
 | GET | `/invitados/:id` | | invitado con `token` del QR |
 | DELETE | `/invitados/:id` | | `{ok}` |
 | POST | `/checkin/qr` | `{token, valor, adminId}` | `{resultado: OK\|DUPLICADO\|INVALIDO, invitado}` |
@@ -178,5 +179,5 @@ Se envía con SMTP (`nodemailer`): el texto del mensaje + las 2 imágenes dentro
 
 ## Excel de invitados
 
-Columnas reconocidas (encabezado en la fila 1): **Nombre** (obligatoria), **Correo**, **WhatsApp** (o Celular/Teléfono), **Área** (o Departamento).
+Columnas reconocidas (el encabezado puede estar en cualquiera de las 10 primeras filas): **Nombre** (obligatoria), **Correo**, **WhatsApp** (o Celular/Teléfono), **Compañía** (o Empresa) y **Área** (o Departamento). Se leen **todas las hojas** del libro: si hay varias y no tienen columna Compañía, el nombre de cada hoja se usa como compañía (Haseth, Botica, Laboratorio…). Los códigos al inicio del departamento (`0102 - GERENCIA`) se quitan.
 Descargue la plantilla desde la pantalla *Invitados*. Si un nombre ya existe se actualizan sus datos; los nuevos reciben código y QR.

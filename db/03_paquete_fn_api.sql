@@ -326,6 +326,7 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
                'nombre'          VALUE v.nombre,
                'correo'          VALUE v.correo,
                'whatsapp'        VALUE v.whatsapp,
+               'compania'        VALUE v.compania,
                'area'            VALUE v.area,
                'llegadaEn'       VALUE fn_api.iso(v.llegada_en),
                'llegadaVia'      VALUE v.llegada_via,
@@ -334,7 +335,7 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
                'correoEnviadoEn' VALUE fn_api.iso(v.correo_en))
              ORDER BY v.nombre RETURNING CLOB)
       INTO l
-      FROM (SELECT i.id, i.codigo, i.nombre, i.correo, i.whatsapp, i.area,
+      FROM (SELECT i.id, i.codigo, i.nombre, i.correo, i.whatsapp, i.compania, i.area,
                    i.llegada_en, i.llegada_via, a.nombre AS admin_nombre,
                    (SELECT MAX(e.enviado_en) FROM fn_envio e
                      WHERE e.invitado_id = i.id AND e.canal = 'WHATSAPP' AND e.estado = 'ENVIADO') AS wa_en,
@@ -387,6 +388,7 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
              'nombre'   VALUE nombre,
              'correo'   VALUE correo,
              'whatsapp' VALUE whatsapp,
+             'compania' VALUE compania,
              'area'     VALUE area
              RETURNING CLOB)
       INTO l
@@ -398,7 +400,7 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
     WHEN OTHERS THEN fallo;
   END;
 
-  -- Cuerpo: {"invitados":[{"nombre":"...","correo":"...","whatsapp":"507...","area":"...","token":"..."}]}
+  -- Cuerpo: {"invitados":[{"nombre":"...","correo":"...","whatsapp":"507...","compania":"...","area":"...","token":"..."}]}
   -- Si el nombre ya existe en el evento, actualiza correo/whatsapp/área; si no, lo crea con código y token.
   PROCEDURE invitados_importar(p_body CLOB) IS
     o           JSON_OBJECT_T;
@@ -412,6 +414,7 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
     l_correo    fn_invitado.correo%TYPE;
     l_whatsapp  fn_invitado.whatsapp%TYPE;
     l_area      fn_invitado.area%TYPE;
+    l_compania  fn_invitado.compania%TYPE;
     l_token     fn_invitado.token_qr%TYPE;
     l_creados   NUMBER := 0;
     l_actual    NUMBER := 0;
@@ -436,6 +439,7 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
       l_correo   := SUBSTR(f.get_string('correo'), 1, 150);
       l_whatsapp := SUBSTR(f.get_string('whatsapp'), 1, 30);
       l_area     := SUBSTR(f.get_string('area'), 1, 100);
+      l_compania := SUBSTR(f.get_string('compania'), 1, 100);
       l_token    := SUBSTR(f.get_string('token'), 1, 64);
       CONTINUE WHEN l_nombre IS NULL OR LENGTH(l_nombre) < 2;
 
@@ -448,16 +452,17 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
         UPDATE fn_invitado
            SET correo   = NVL(l_correo, correo),
                whatsapp = NVL(l_whatsapp, whatsapp),
-               area     = NVL(l_area, area)
+               area     = NVL(l_area, area),
+               compania = NVL(l_compania, compania)
          WHERE id = l_id;
         l_actual := l_actual + 1;
       EXCEPTION WHEN NO_DATA_FOUND THEN
         IF l_token IS NULL THEN
           RAISE_APPLICATION_ERROR(-20400, 'Falta el token del QR para ' || l_nombre);
         END IF;
-        INSERT INTO fn_invitado (evento_id, codigo, token_qr, nombre, correo, whatsapp, area)
-        VALUES (l_ev, l_prefijo || '-' || LPAD(l_siguiente, 3, '0'), l_token,
-                l_nombre, l_correo, l_whatsapp, l_area);
+        INSERT INTO fn_invitado (evento_id, codigo, token_qr, nombre, correo, whatsapp, compania, area)
+        VALUES (l_ev, l_prefijo || '-' || LPAD(l_siguiente, GREATEST(3, LENGTH(l_siguiente)), '0'), l_token,
+                l_nombre, l_correo, l_whatsapp, l_compania, l_area);
         l_siguiente := l_siguiente + 1;
         l_creados := l_creados + 1;
       END;
@@ -470,7 +475,7 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
   EXCEPTION WHEN OTHERS THEN fallo;
   END;
 
-  -- Cuerpo: {"nombre":"...","correo":"...","whatsapp":"507...","area":"...","token":"..."}
+  -- Cuerpo: {"nombre":"...","correo":"...","whatsapp":"507...","compania":"...","area":"...","token":"..."}
   -- Crea un invitado con el siguiente código (HAS-###). 409 si ya existe ese nombre.
   PROCEDURE invitado_crear(p_body CLOB) IS
     o           JSON_OBJECT_T;
@@ -483,6 +488,7 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
     l_correo    fn_invitado.correo%TYPE;
     l_whatsapp  fn_invitado.whatsapp%TYPE;
     l_area      fn_invitado.area%TYPE;
+    l_compania  fn_invitado.compania%TYPE;
     l_token     fn_invitado.token_qr%TYPE;
     l_codigo    fn_invitado.codigo%TYPE;
     r           JSON_OBJECT_T := JSON_OBJECT_T();
@@ -492,6 +498,7 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
     l_correo   := SUBSTR(o.get_string('correo'), 1, 150);
     l_whatsapp := SUBSTR(o.get_string('whatsapp'), 1, 30);
     l_area     := SUBSTR(o.get_string('area'), 1, 100);
+    l_compania := SUBSTR(o.get_string('compania'), 1, 100);
     l_token    := SUBSTR(o.get_string('token'), 1, 64);
     IF l_nombre IS NULL OR LENGTH(l_nombre) < 2 THEN
       RAISE_APPLICATION_ERROR(-20400, 'El nombre es obligatorio');
@@ -513,10 +520,10 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
       INTO l_siguiente
       FROM fn_invitado
      WHERE evento_id = l_ev;
-    l_codigo := l_prefijo || '-' || LPAD(l_siguiente, 3, '0');
+    l_codigo := l_prefijo || '-' || LPAD(l_siguiente, GREATEST(3, LENGTH(l_siguiente)), '0');
 
-    INSERT INTO fn_invitado (evento_id, codigo, token_qr, nombre, correo, whatsapp, area)
-    VALUES (l_ev, l_codigo, l_token, l_nombre, l_correo, l_whatsapp, l_area)
+    INSERT INTO fn_invitado (evento_id, codigo, token_qr, nombre, correo, whatsapp, compania, area)
+    VALUES (l_ev, l_codigo, l_token, l_nombre, l_correo, l_whatsapp, l_compania, l_area)
     RETURNING id INTO l_id;
     COMMIT;
 
@@ -526,7 +533,7 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
   EXCEPTION WHEN OTHERS THEN fallo;
   END;
 
-  -- Cuerpo: cualquiera de {"nombre","correo","whatsapp","area"}. Solo cambia los campos enviados
+  -- Cuerpo: cualquiera de {"nombre","correo","whatsapp","compania","area"}. Solo cambia los campos enviados
   -- (un campo enviado como null o "" se borra, salvo el nombre, que es obligatorio).
   PROCEDURE invitado_actualizar(p_id VARCHAR2, p_body CLOB) IS
     o        JSON_OBJECT_T;
@@ -561,6 +568,7 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
     IF o.has('correo')   THEN v := SUBSTR(o.get_string('correo'), 1, 150);  UPDATE fn_invitado SET correo   = v WHERE id = l_id; END IF;
     IF o.has('whatsapp') THEN v := SUBSTR(o.get_string('whatsapp'), 1, 30); UPDATE fn_invitado SET whatsapp = v WHERE id = l_id; END IF;
     IF o.has('area')     THEN v := SUBSTR(o.get_string('area'), 1, 100);    UPDATE fn_invitado SET area     = v WHERE id = l_id; END IF;
+    IF o.has('compania') THEN v := SUBSTR(o.get_string('compania'), 1, 100); UPDATE fn_invitado SET compania = v WHERE id = l_id; END IF;
     COMMIT;
     ok;
   EXCEPTION WHEN OTHERS THEN fallo;
@@ -601,6 +609,7 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
                                  'id'           VALUE i.id,
                                  'codigo'       VALUE i.codigo,
                                  'nombre'       VALUE i.nombre,
+                                 'compania'     VALUE i.compania,
                                  'area'         VALUE i.area,
                                  'llegadaEn'    VALUE fn_api.iso(i.llegada_en),
                                  'llegadaAdmin' VALUE a.nombre)
@@ -673,13 +682,14 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
                'id'           VALUE v.id,
                'codigo'       VALUE v.codigo,
                'nombre'       VALUE v.nombre,
+               'compania'     VALUE v.compania,
                'area'         VALUE v.area,
                'llegadaEn'    VALUE fn_api.iso(v.llegada_en),
                'llegadaVia'   VALUE v.llegada_via,
                'llegadaAdmin' VALUE v.admin_nombre)
              ORDER BY v.llegada_en DESC RETURNING CLOB)
       INTO l
-      FROM (SELECT i.id, i.codigo, i.nombre, i.area, i.llegada_en, i.llegada_via, a.nombre AS admin_nombre
+      FROM (SELECT i.id, i.codigo, i.nombre, i.compania, i.area, i.llegada_en, i.llegada_via, a.nombre AS admin_nombre
               FROM fn_invitado i
               LEFT JOIN fn_admin a ON a.id = i.llegada_admin_id
              WHERE i.evento_id = l_ev AND i.activo = 'S' AND i.llegada_en IS NOT NULL

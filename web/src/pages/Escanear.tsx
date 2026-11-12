@@ -5,10 +5,13 @@ import { api, hora, iniciales, leerSesion, normalizar, primerNombre, type Invita
 import { Aviso, Avatar, Buscador, Cargando, Hoja, Pantalla } from '../components/Comunes';
 import { Icono } from '../components/Icono';
 
-interface Llegada { id: number; codigo: string; nombre: string; area: string | null; llegadaEn: string; llegadaVia: string; llegadaAdmin: string | null }
+/** "Compañía · Área" (lo que haya). */
+const lugar = (x: { compania?: string | null; area: string | null }) => [x.compania, x.area].filter(Boolean).join(' · ');
+
+interface Llegada { id: number; codigo: string; nombre: string; compania?: string | null; area: string | null; llegadaEn: string; llegadaVia: string; llegadaAdmin: string | null }
 interface ResultadoCheckin {
   resultado: 'OK' | 'DUPLICADO' | 'INVALIDO';
-  invitado?: { id: number; codigo: string; nombre: string; area: string | null; llegadaEn: string | null; llegadaAdmin: string | null };
+  invitado?: { id: number; codigo: string; nombre: string; compania?: string | null; area: string | null; llegadaEn: string | null; llegadaAdmin: string | null };
 }
 
 function sonar(ok: boolean) {
@@ -140,7 +143,7 @@ export default function Escanear() {
 
   const filtrados = useMemo(() => {
     const n = normalizar(q.trim());
-    return lista.filter((i) => !n || normalizar(i.nombre).includes(n) || normalizar(i.area).includes(n) || normalizar(i.codigo).includes(n));
+    return lista.filter((i) => !n || normalizar(i.nombre).includes(n) || normalizar(i.area).includes(n) || normalizar(i.compania).includes(n) || normalizar(i.codigo).includes(n));
   }, [lista, q]);
 
   const r = res;
@@ -195,7 +198,7 @@ export default function Escanear() {
               <Avatar texto={iniciales(l.nombre)} tam={42} />
               <span className="fila-texto">
                 <strong>{l.nombre}</strong>
-                <span className="tenue">{l.area ?? ''} · registró {primerNombre(l.llegadaAdmin ?? '')} · {l.llegadaVia === 'QR' ? 'QR' : 'Nombre'}</span>
+                <span className="tenue">{lugar(l)} · registró {primerNombre(l.llegadaAdmin ?? '')} · {l.llegadaVia === 'QR' ? 'QR' : 'Nombre'}</span>
               </span>
               <span className="verde negrita">{hora(l.llegadaEn)}</span>
             </div>
@@ -210,7 +213,7 @@ export default function Escanear() {
           {filtrados.map((i) => (
             <button key={i.id} type="button" className="fila boton-fila" disabled={!!i.llegadaEn} onClick={() => registrarManual(i.id)}>
               <Avatar texto={iniciales(i.nombre)} tam={44} />
-              <span className="fila-texto"><strong>{i.nombre}</strong><span className="tenue">{i.area ?? ''} · {i.codigo}</span></span>
+              <span className="fila-texto"><strong>{i.nombre}</strong><span className="tenue">{[lugar(i), i.codigo].filter(Boolean).join(' · ')}</span></span>
               <span className={'pastilla ' + (i.llegadaEn ? 'ok' : 'solida')}>{i.llegadaEn ? `Llegó ${hora(i.llegadaEn)}` : 'Registrar'}</span>
             </button>
           ))}
@@ -226,7 +229,7 @@ export default function Escanear() {
             {r.resultado === 'OK' && <>
               <span className="etiqueta verde">Llegada registrada · {hora(inv?.llegadaEn ?? null)}</span>
               <span className="resultado-nombre">{inv?.nombre}</span>
-              <span className="tenue grande">{inv?.area ?? ''} · {inv?.codigo}</span>
+              <span className="tenue grande">{[inv && lugar(inv), inv?.codigo].filter(Boolean).join(' · ')}</span>
             </>}
             {r.resultado === 'DUPLICADO' && <>
               <span className="etiqueta ambar">Ya había llegado</span>
