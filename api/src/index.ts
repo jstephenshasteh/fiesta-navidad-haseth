@@ -13,6 +13,7 @@ import { eventoRouter } from './routes/evento.js';
 import { invitadosRouter } from './routes/invitados.js';
 import { checkinRouter } from './routes/checkin.js';
 import { enviosRouter } from './routes/envios.js';
+import { premiosRouter } from './routes/premios.js';
 
 const app = express();
 app.disable('x-powered-by');
@@ -30,7 +31,7 @@ app.get('/api/salud/apex', async (_req, res) => {
     res.status(503).json({ apex: 'error', detalle: e instanceof Error ? e.message : String(e) });
   }
 });
-app.use('/api', authRouter, eventoRouter, invitadosRouter, checkinRouter, enviosRouter);
+app.use('/api', authRouter, eventoRouter, invitadosRouter, checkinRouter, enviosRouter, premiosRouter);
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Ruta no encontrada' }));
 
 // En producción la API también sirve la app web compilada (web/dist).
@@ -75,7 +76,7 @@ async function adminInicial() {
     const admins = await apex<unknown[]>('GET', '/admins');
     if (admins.length) return;
     await apex('POST', '/admins', {
-      cuerpo: { nombre, pinHash: await bcrypt.hash(pin, 10), esPrincipal: true, color: '#0E3B2E' },
+      cuerpo: { nombre, pinHash: await bcrypt.hash(pin, 10), esPrincipal: true, rol: 'PRINCIPAL', color: '#0E3B2E' },
     });
     console.log(`Administrador principal "${nombre}" creado. Ya puede quitar ADMIN_INICIAL_PIN de las variables.`);
   } catch (e) {

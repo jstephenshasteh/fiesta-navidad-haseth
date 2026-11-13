@@ -16,6 +16,7 @@ CREATE OR REPLACE PACKAGE FN_API AS
   PROCEDURE admin_obtener(p_id VARCHAR2);
   PROCEDURE admin_crear(p_body CLOB);
   PROCEDURE admin_cambiar_pin(p_id VARCHAR2, p_body CLOB);
+  PROCEDURE admin_actualizar(p_id VARCHAR2, p_body CLOB);
   PROCEDURE admin_desactivar(p_id VARCHAR2);
 
   -- Evento
@@ -40,6 +41,15 @@ CREATE OR REPLACE PACKAGE FN_API AS
 
   -- Envíos
   PROCEDURE envio_registrar(p_body CLOB);
+
+  -- Premios (sorteo entre los que llegaron)
+  PROCEDURE premios_listar;
+  PROCEDURE premios_participantes;
+  PROCEDURE ronda_crear(p_body CLOB);
+  PROCEDURE ronda_actualizar(p_id VARCHAR2, p_body CLOB);
+  PROCEDURE ronda_eliminar(p_id VARCHAR2);
+  PROCEDURE puesto_sortear(p_id VARCHAR2, p_body CLOB);
+  PROCEDURE puesto_ausente(p_id VARCHAR2);
 END FN_API;
 /
 
@@ -137,8 +147,9 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
                'id'          VALUE id,
                'nombre'      VALUE nombre,
                'esPrincipal' VALUE (CASE WHEN es_principal = 'S' THEN 'true' ELSE 'false' END) FORMAT JSON,
+               'rol'         VALUE rol,
                'color'       VALUE color)
-             ORDER BY es_principal DESC, nombre RETURNING CLOB)
+             ORDER BY CASE rol WHEN 'PRINCIPAL' THEN 1 WHEN 'ADMIN' THEN 2 ELSE 3 END, nombre RETURNING CLOB)
       INTO l
       FROM fn_admin
      WHERE activo = 'S';
@@ -157,6 +168,7 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
              'nombre'      VALUE nombre,
              'pinHash'     VALUE pin_hash,
              'esPrincipal' VALUE (CASE WHEN es_principal = 'S' THEN 'true' ELSE 'false' END) FORMAT JSON,
+             'rol'         VALUE rol,
              'color'       VALUE color
              RETURNING CLOB)
       INTO l
@@ -168,12 +180,13 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
     WHEN OTHERS THEN fallo;
   END;
 
-  -- Cuerpo: {"nombre":"...","pinHash":"$2b$...","esPrincipal":false,"color":"#146B47"}
+  -- Cuerpo: {"nombre":"...","pinHash":"$2b$...","rol":"PRINCIPAL|ADMIN|HOST","color":"#146B47"}
+  -- (también acepta "esPrincipal":true en lugar de "rol")
   PROCEDURE admin_crear(p_body CLOB) IS
     o           JSON_OBJECT_T;
     l_nombre    fn_admin.nombre%TYPE;
     l_hash      fn_admin.pin_hash%TYPE;
-    l_principal CHAR(1) := 'N';
+    l_rol       fn_admin.rol%TYPE := 'ADMIN';
     l_color     fn_admin.color%TYPE;
     l_id        NUMBER;
   BEGIN
@@ -181,15 +194,20 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
     l_nombre := SUBSTR(TRIM(o.get_string('nombre')), 1, 120);
     l_hash   := o.get_string('pinHash');
     l_color  := NVL(SUBSTR(o.get_string('color'), 1, 9), '#146B47');
-    IF o.has('esPrincipal') THEN
-      IF o.get_boolean('esPrincipal') THEN l_principal := 'S'; END IF;
+    IF o.has('rol') THEN
+      l_rol := UPPER(SUBSTR(o.get_string('rol'), 1, 10));
+    ELSIF o.has('esPrincipal') THEN
+      IF o.get_boolean('esPrincipal') THEN l_rol := 'PRINCIPAL'; END IF;
     END IF;
     IF l_nombre IS NULL OR l_hash IS NULL THEN
       RAISE_APPLICATION_ERROR(-20400, 'nombre y pinHash son obligatorios');
     END IF;
+    IF l_rol NOT IN ('PRINCIPAL', 'ADMIN', 'HOST') THEN
+      RAISE_APPLICATION_ERROR(-20400, 'Perfil inválido: ' || l_rol);
+    END IF;
 
-    INSERT INTO fn_admin (nombre, pin_hash, es_principal, color)
-    VALUES (l_nombre, l_hash, l_principal, l_color)
+    INSERT INTO fn_admin (nombre, pin_hash, es_principal, rol, color)
+    VALUES (l_nombre, l_hash, CASE WHEN l_rol = 'PRINCIPAL' THEN 'S' ELSE 'N' END, l_rol, l_color)
     RETURNING id INTO l_id;
     COMMIT;
     responder('{"id":' || l_id || '}', 201);
@@ -210,6 +228,35 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
     END IF;
     UPDATE fn_admin SET pin_hash = l_hash WHERE id = l_id AND activo = 'S';
     IF SQL%ROWCOUNT = 0 THEN RAISE_APPLICATION_ERROR(-20404, 'Administrador no encontrado'); END IF;
+    COMMIT;
+    ok;
+  EXCEPTION WHEN OTHERS THEN fallo;
+  END;
+
+  -- Cuerpo: cualquiera de {"nombre":"...","rol":"PRINCIPAL|ADMIN|HOST"}
+  PROCEDURE admin_actualizar(p_id VARCHAR2, p_body CLOB) IS
+    o        JSON_OBJECT_T;
+    l_id     NUMBER;
+    l_nombre fn_admin.nombre%TYPE;
+    l_rol    fn_admin.rol%TYPE;
+  BEGIN
+    l_id := a_numero(p_id);
+    o := cuerpo(p_body);
+    IF o.has('nombre') THEN
+      l_nombre := SUBSTR(TRIM(o.get_string('nombre')), 1, 120);
+      IF l_nombre IS NULL THEN RAISE_APPLICATION_ERROR(-20400, 'El nombre es obligatorio'); END IF;
+      UPDATE fn_admin SET nombre = l_nombre WHERE id = l_id AND activo = 'S';
+    END IF;
+    IF o.has('rol') THEN
+      l_rol := UPPER(SUBSTR(o.get_string('rol'), 1, 10));
+      IF l_rol NOT IN ('PRINCIPAL', 'ADMIN', 'HOST') THEN
+        RAISE_APPLICATION_ERROR(-20400, 'Perfil inválido: ' || l_rol);
+      END IF;
+      UPDATE fn_admin
+         SET rol = l_rol, es_principal = CASE WHEN l_rol = 'PRINCIPAL' THEN 'S' ELSE 'N' END
+       WHERE id = l_id AND activo = 'S';
+    END IF;
+    IF SQL%ROWCOUNT = 0 THEN RAISE_APPLICATION_ERROR(-20404, 'Usuario no encontrado'); END IF;
     COMMIT;
     ok;
   EXCEPTION WHEN OTHERS THEN fallo;
@@ -737,6 +784,294 @@ CREATE OR REPLACE PACKAGE BODY FN_API AS
     VALUES (l_invitado, l_canal, l_estado, l_detalle, l_proveedor, l_admin);
     COMMIT;
     responder('{"ok":true}', 201);
+  EXCEPTION WHEN OTHERS THEN fallo;
+  END;
+
+  -- -------------------------------------------------------------------
+  -- Premios
+  -- Participan solo los invitados que llegaron. Quien ya ganó (o fue marcado
+  -- ausente) no vuelve a participar: FN_GANADOR tiene un único registro por invitado.
+  -- -------------------------------------------------------------------
+  FUNCTION ronda_del_evento(p_id NUMBER, p_ev NUMBER) RETURN BOOLEAN IS
+    l_n NUMBER;
+  BEGIN
+    SELECT COUNT(*) INTO l_n FROM fn_ronda WHERE id = p_id AND evento_id = p_ev;
+    RETURN l_n > 0;
+  END;
+
+  -- Respuesta: {"rondas":[...],"puestos":[...],"ausentes":[...],"elegibles":n,"llegaron":n,"ganadores":n}
+  PROCEDURE premios_listar IS
+    l_ev        NUMBER;
+    l_rondas    CLOB;
+    l_puestos   CLOB;
+    l_ausentes  CLOB;
+    l_elegibles NUMBER;
+    l_llegaron  NUMBER;
+    l_ganadores NUMBER;
+    l           CLOB;
+  BEGIN
+    l_ev := ev_activo;
+
+    SELECT JSON_ARRAYAGG(
+             JSON_OBJECT(
+               'id'       VALUE r.id,
+               'nombre'   VALUE r.nombre,
+               'creadoEn' VALUE fn_api.iso(r.creado_en))
+             ORDER BY r.id RETURNING CLOB)
+      INTO l_rondas
+      FROM fn_ronda r
+     WHERE r.evento_id = l_ev;
+
+    SELECT JSON_ARRAYAGG(
+             JSON_OBJECT(
+               'id'              VALUE v.id,
+               'rondaId'         VALUE v.ronda_id,
+               'posicion'        VALUE v.posicion,
+               'premio'          VALUE v.premio,
+               'ganadorId'       VALUE v.inv_id,
+               'ganadorNombre'   VALUE v.inv_nombre,
+               'ganadorCompania' VALUE v.inv_compania,
+               'ganadorArea'     VALUE v.inv_area,
+               'ganadorCodigo'   VALUE v.inv_codigo,
+               'sorteadoEn'      VALUE fn_api.iso(v.sorteado_en))
+             ORDER BY v.ronda_id, v.posicion RETURNING CLOB)
+      INTO l_puestos
+      FROM (SELECT p.id, p.ronda_id, p.posicion, p.premio,
+                   i.id AS inv_id, i.nombre AS inv_nombre, i.compania AS inv_compania,
+                   i.area AS inv_area, i.codigo AS inv_codigo, g.sorteado_en
+              FROM fn_puesto p
+              JOIN fn_ronda r ON r.id = p.ronda_id
+              LEFT JOIN fn_ganador g ON g.puesto_id = p.id AND g.estado = 'GANADOR'
+              LEFT JOIN fn_invitado i ON i.id = g.invitado_id
+             WHERE r.evento_id = l_ev) v;
+
+    SELECT JSON_ARRAYAGG(
+             JSON_OBJECT('puestoId' VALUE g.puesto_id, 'nombre' VALUE i.nombre)
+             ORDER BY g.sorteado_en RETURNING CLOB)
+      INTO l_ausentes
+      FROM fn_ganador g
+      JOIN fn_puesto p ON p.id = g.puesto_id
+      JOIN fn_ronda r ON r.id = p.ronda_id
+      JOIN fn_invitado i ON i.id = g.invitado_id
+     WHERE r.evento_id = l_ev AND g.estado = 'AUSENTE';
+
+    SELECT COUNT(*),
+           COUNT(CASE WHEN NOT EXISTS (SELECT 1 FROM fn_ganador g WHERE g.invitado_id = i.id) THEN 1 END),
+           COUNT(CASE WHEN EXISTS (SELECT 1 FROM fn_ganador g WHERE g.invitado_id = i.id AND g.estado = 'GANADOR') THEN 1 END)
+      INTO l_llegaron, l_elegibles, l_ganadores
+      FROM fn_invitado i
+     WHERE i.evento_id = l_ev AND i.activo = 'S' AND i.llegada_en IS NOT NULL;
+
+    l := '{"rondas":' || NVL(l_rondas, '[]')
+      || ',"puestos":' || NVL(l_puestos, '[]')
+      || ',"ausentes":' || NVL(l_ausentes, '[]')
+      || ',"elegibles":' || l_elegibles
+      || ',"llegaron":' || l_llegaron
+      || ',"ganadores":' || l_ganadores || '}';
+    responder(l);
+  EXCEPTION WHEN OTHERS THEN fallo;
+  END;
+
+  -- Nombres de quienes todavía pueden ganar (para la animación de la pantalla del sorteo).
+  PROCEDURE premios_participantes IS
+    l    CLOB;
+    l_ev NUMBER;
+  BEGIN
+    l_ev := ev_activo;
+    SELECT JSON_ARRAYAGG(i.nombre ORDER BY i.nombre RETURNING CLOB)
+      INTO l
+      FROM fn_invitado i
+     WHERE i.evento_id = l_ev AND i.activo = 'S' AND i.llegada_en IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM fn_ganador g WHERE g.invitado_id = i.id);
+    responder(NVL(l, '[]'));
+  EXCEPTION WHEN OTHERS THEN fallo;
+  END;
+
+  -- Crea o ajusta los puestos 1..N con su premio. Quita los puestos sobrantes si no tienen ganador.
+  PROCEDURE guardar_puestos(p_ronda NUMBER, p_lista JSON_ARRAY_T) IS
+    l_premio   fn_puesto.premio%TYPE;
+    f          JSON_OBJECT_T;
+    l_n        PLS_INTEGER;
+    l_ocupados NUMBER;
+  BEGIN
+    IF p_lista IS NULL THEN
+      RAISE_APPLICATION_ERROR(-20400, 'Faltan los puestos de la ronda');
+    END IF;
+    l_n := p_lista.get_size;
+    IF l_n < 1 OR l_n > 100 THEN
+      RAISE_APPLICATION_ERROR(-20400, 'La ronda debe tener entre 1 y 100 puestos');
+    END IF;
+    FOR k IN 1 .. l_n LOOP
+      f := TREAT(p_lista.get(k - 1) AS JSON_OBJECT_T);
+      l_premio := SUBSTR(TRIM(f.get_string('premio')), 1, 200);
+      UPDATE fn_puesto SET premio = l_premio WHERE ronda_id = p_ronda AND posicion = k;
+      IF SQL%ROWCOUNT = 0 THEN
+        INSERT INTO fn_puesto (ronda_id, posicion, premio) VALUES (p_ronda, k, l_premio);
+      END IF;
+    END LOOP;
+
+    SELECT COUNT(*) INTO l_ocupados
+      FROM fn_puesto p
+     WHERE p.ronda_id = p_ronda AND p.posicion > l_n
+       AND EXISTS (SELECT 1 FROM fn_ganador g WHERE g.puesto_id = p.id AND g.estado = 'GANADOR');
+    IF l_ocupados > 0 THEN
+      RAISE_APPLICATION_ERROR(-20409, 'No se pueden quitar puestos que ya tienen ganador');
+    END IF;
+    DELETE FROM fn_ganador WHERE puesto_id IN (SELECT id FROM fn_puesto WHERE ronda_id = p_ronda AND posicion > l_n);
+    DELETE FROM fn_puesto WHERE ronda_id = p_ronda AND posicion > l_n;
+  END;
+
+  -- Cuerpo: {"nombre":"Ronda 1","puestos":[{"premio":"Televisor"},{"premio":"Bono $50"},...]}
+  PROCEDURE ronda_crear(p_body CLOB) IS
+    o        JSON_OBJECT_T;
+    l_ev     NUMBER;
+    l_nombre fn_ronda.nombre%TYPE;
+    l_id     NUMBER;
+    l_cuenta NUMBER;
+  BEGIN
+    o := cuerpo(p_body);
+    l_ev := ev_activo;
+    l_nombre := SUBSTR(TRIM(o.get_string('nombre')), 1, 120);
+    IF l_nombre IS NULL THEN
+      SELECT COUNT(*) + 1 INTO l_cuenta FROM fn_ronda WHERE evento_id = l_ev;
+      l_nombre := 'Ronda ' || l_cuenta;
+    END IF;
+    IF NOT o.has('puestos') THEN
+      RAISE_APPLICATION_ERROR(-20400, 'Faltan los puestos de la ronda');
+    END IF;
+    INSERT INTO fn_ronda (evento_id, nombre) VALUES (l_ev, l_nombre) RETURNING id INTO l_id;
+    guardar_puestos(l_id, o.get_array('puestos'));
+    COMMIT;
+    responder('{"id":' || l_id || '}', 201);
+  EXCEPTION WHEN OTHERS THEN fallo;
+  END;
+
+  -- Cuerpo: {"nombre":"...","puestos":[{"premio":"..."}, ...]}  (ambos opcionales)
+  PROCEDURE ronda_actualizar(p_id VARCHAR2, p_body CLOB) IS
+    o        JSON_OBJECT_T;
+    l_id     NUMBER;
+    l_ev     NUMBER;
+    l_nombre fn_ronda.nombre%TYPE;
+  BEGIN
+    l_id := a_numero(p_id);
+    o := cuerpo(p_body);
+    l_ev := ev_activo;
+    IF NOT ronda_del_evento(l_id, l_ev) THEN
+      RAISE_APPLICATION_ERROR(-20404, 'Ronda no encontrada');
+    END IF;
+    IF o.has('nombre') THEN
+      l_nombre := SUBSTR(TRIM(o.get_string('nombre')), 1, 120);
+      IF l_nombre IS NOT NULL THEN
+        UPDATE fn_ronda SET nombre = l_nombre WHERE id = l_id;
+      END IF;
+    END IF;
+    IF o.has('puestos') THEN
+      guardar_puestos(l_id, o.get_array('puestos'));
+    END IF;
+    COMMIT;
+    ok;
+  EXCEPTION WHEN OTHERS THEN fallo;
+  END;
+
+  -- Borra la ronda con sus ganadores: esas personas vuelven a participar.
+  PROCEDURE ronda_eliminar(p_id VARCHAR2) IS
+    l_id NUMBER;
+    l_ev NUMBER;
+  BEGIN
+    l_id := a_numero(p_id);
+    l_ev := ev_activo;
+    IF NOT ronda_del_evento(l_id, l_ev) THEN
+      RAISE_APPLICATION_ERROR(-20404, 'Ronda no encontrada');
+    END IF;
+    DELETE FROM fn_ganador WHERE puesto_id IN (SELECT id FROM fn_puesto WHERE ronda_id = l_id);
+    DELETE FROM fn_puesto WHERE ronda_id = l_id;
+    DELETE FROM fn_ronda WHERE id = l_id;
+    COMMIT;
+    ok;
+  EXCEPTION WHEN OTHERS THEN fallo;
+  END;
+
+  -- Sortea el ganador de un puesto entre los que llegaron y aún no han ganado.
+  -- Cuerpo: {"adminId":1}
+  PROCEDURE puesto_sortear(p_id VARCHAR2, p_body CLOB) IS
+    o          JSON_OBJECT_T;
+    l_id       NUMBER;
+    l_ev       NUMBER;
+    l_admin    NUMBER;
+    l_ocupado  NUMBER;
+    l_existe   NUMBER;
+    l_invitado NUMBER;
+    l_quedan   NUMBER;
+    l          CLOB;
+  BEGIN
+    l_id := a_numero(p_id);
+    l_ev := ev_activo;
+    IF p_body IS NOT NULL AND DBMS_LOB.GETLENGTH(p_body) > 0 THEN
+      o := JSON_OBJECT_T.parse(p_body);
+      l_admin := o.get_number('adminId');
+    END IF;
+
+    SELECT COUNT(*) INTO l_existe
+      FROM fn_puesto p JOIN fn_ronda r ON r.id = p.ronda_id
+     WHERE p.id = l_id AND r.evento_id = l_ev;
+    IF l_existe = 0 THEN RAISE_APPLICATION_ERROR(-20404, 'Puesto no encontrado'); END IF;
+
+    SELECT COUNT(*) INTO l_ocupado FROM fn_ganador WHERE puesto_id = l_id AND estado = 'GANADOR';
+    IF l_ocupado > 0 THEN RAISE_APPLICATION_ERROR(-20409, 'Este puesto ya tiene ganador'); END IF;
+
+    BEGIN
+      SELECT i.id INTO l_invitado
+        FROM fn_invitado i
+       WHERE i.evento_id = l_ev AND i.activo = 'S' AND i.llegada_en IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM fn_ganador g WHERE g.invitado_id = i.id)
+       ORDER BY DBMS_RANDOM.VALUE
+       FETCH FIRST 1 ROWS ONLY;
+    EXCEPTION WHEN NO_DATA_FOUND THEN
+      RAISE_APPLICATION_ERROR(-20409, 'No quedan participantes: todos los que llegaron ya ganaron');
+    END;
+
+    BEGIN
+      INSERT INTO fn_ganador (puesto_id, invitado_id, estado, admin_id)
+      VALUES (l_id, l_invitado, 'GANADOR', l_admin);
+    EXCEPTION WHEN DUP_VAL_ON_INDEX THEN
+      RAISE_APPLICATION_ERROR(-20409, 'Se sorteó desde otro equipo al mismo tiempo. Vuelva a intentarlo.');
+    END;
+    COMMIT;
+
+    SELECT COUNT(*) INTO l_quedan
+      FROM fn_invitado i
+     WHERE i.evento_id = l_ev AND i.activo = 'S' AND i.llegada_en IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM fn_ganador g WHERE g.invitado_id = i.id);
+
+    SELECT JSON_OBJECT(
+             'puestoId'  VALUE p.id,
+             'posicion'  VALUE p.posicion,
+             'premio'    VALUE p.premio,
+             'elegibles' VALUE l_quedan,
+             'ganador'   VALUE JSON_OBJECT(
+                                 'id'       VALUE i.id,
+                                 'nombre'   VALUE i.nombre,
+                                 'compania' VALUE i.compania,
+                                 'area'     VALUE i.area,
+                                 'codigo'   VALUE i.codigo)
+             RETURNING CLOB)
+      INTO l
+      FROM fn_puesto p, fn_invitado i
+     WHERE p.id = l_id AND i.id = l_invitado;
+    responder(l);
+  EXCEPTION WHEN OTHERS THEN fallo;
+  END;
+
+  -- El ganador del puesto no está presente: queda como AUSENTE (no vuelve a participar)
+  -- y el puesto queda libre para volver a sortearlo si se quiere.
+  PROCEDURE puesto_ausente(p_id VARCHAR2) IS
+    l_id NUMBER;
+  BEGIN
+    l_id := a_numero(p_id);
+    UPDATE fn_ganador SET estado = 'AUSENTE' WHERE puesto_id = l_id AND estado = 'GANADOR';
+    IF SQL%ROWCOUNT = 0 THEN RAISE_APPLICATION_ERROR(-20404, 'Este puesto no tiene ganador'); END IF;
+    COMMIT;
+    ok;
   EXCEPTION WHEN OTHERS THEN fallo;
   END;
 

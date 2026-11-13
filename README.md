@@ -48,6 +48,7 @@ En APEX, entre a **SQL Workshop › SQL Scripts**, suba cada archivo de `db/` y 
 | `04_servicios_rest.sql` | Publica el módulo REST `fiesta.v1` (aparece en **SQL Workshop › RESTful Services**) |
 | `06_agregar_editar_invitados.sql` | Agrega las APIs para crear y editar invitados desde la app (solo si ya tenía instalado el módulo; antes vuelva a ejecutar `03`) |
 | `08_compania.sql` | Agrega el campo **Compañía** a los invitados (solo si ya tenía las tablas; después vuelva a ejecutar `03`) |
+| `09_perfiles_y_premios.sql` | Agrega los perfiles (Principal, Administrador, Host), las tablas de premios y sus APIs (solo si ya tenía todo instalado; después vuelva a ejecutar `03`) |
 | `05_seguridad_oauth.sql` | Protege el módulo con OAuth2 y crea el cliente `fiesta_railway`. **Copie el CLIENT_ID y CLIENT_SECRET que muestra** |
 
 Requisitos: Oracle 19c o superior y ORDS 23.3 o superior (en apex.oracle.com y Autonomous Database ya se cumple).

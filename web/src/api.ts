@@ -3,11 +3,36 @@
 const BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? '';
 const CLAVE = 'fnh_sesion';
 
+/** PRINCIPAL: todo · ADMIN: todo menos usuarios y ajustes · HOST: solo recibe invitados. */
+export type Rol = 'PRINCIPAL' | 'ADMIN' | 'HOST';
+
+export const NOMBRE_ROL: Record<Rol, string> = { PRINCIPAL: 'Admin. principal', ADMIN: 'Administrador', HOST: 'Host' };
+export const DETALLE_ROL: Record<Rol, string> = {
+  PRINCIPAL: 'Todo, incluidos usuarios y ajustes del evento',
+  ADMIN: 'Invitados, envíos, escaneo y premios',
+  HOST: 'Solo recibe invitados: escanea QR y busca por nombre',
+};
+
 export interface Admin {
   id: number;
   nombre: string;
+  rol?: Rol;
   esPrincipal: boolean;
   color: string;
+}
+
+export function rolDe(a: Pick<Admin, 'rol' | 'esPrincipal'> | null | undefined): Rol {
+  return a?.rol ?? (a?.esPrincipal ? 'PRINCIPAL' : 'ADMIN');
+}
+
+/** Perfil de quien tiene la sesión abierta. */
+export function miRol(): Rol {
+  return rolDe(leerSesion()?.admin);
+}
+
+/** Principal o Administrador (todo menos solo recibir invitados). */
+export function esGestion(r: Rol = miRol()): boolean {
+  return r === 'PRINCIPAL' || r === 'ADMIN';
 }
 
 interface Sesion {

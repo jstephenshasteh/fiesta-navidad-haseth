@@ -17,7 +17,7 @@ BEGIN
     p_base_path      => '/fiesta/v1/',
     p_items_per_page => 0,
     p_status         => 'PUBLISHED',
-    p_comments       => 'API de la Fiesta navideña 2026 (invitados, llegadas y envíos)');
+    p_comments       => 'API de la Fiesta navideña 2026 (invitados, llegadas, envíos y premios)');
 
   -- ---------------------------------------------------------------
   -- Administradores
@@ -41,6 +41,10 @@ BEGIN
     p_source_type => ORDS.source_type_plsql,
     p_source => 'BEGIN fn_api.admin_desactivar(:id); :status_code := fn_api.estado; END;',
     p_comments => 'Desactiva un administrador');
+  ORDS.DEFINE_HANDLER(p_module_name => 'fiesta.v1', p_pattern => 'admins/:id', p_method => 'PUT',
+    p_source_type => ORDS.source_type_plsql,
+    p_source => 'BEGIN fn_api.admin_actualizar(:id, :body_text); :status_code := fn_api.estado; END;',
+    p_comments => 'Cambia nombre o perfil {nombre, rol: PRINCIPAL|ADMIN|HOST}');
 
   ORDS.DEFINE_TEMPLATE(p_module_name => 'fiesta.v1', p_pattern => 'admins/:id/pin');
   ORDS.DEFINE_HANDLER(p_module_name => 'fiesta.v1', p_pattern => 'admins/:id/pin', p_method => 'PUT',
@@ -148,6 +152,49 @@ BEGIN
     p_source_type => ORDS.source_type_plsql,
     p_source => 'BEGIN fn_api.envio_registrar(:body_text); :status_code := fn_api.estado; END;',
     p_comments => 'Registra el resultado de un envío por WhatsApp o correo');
+
+  -- ---------------------------------------------------------------
+  -- Premios (sorteo entre los que llegaron)
+  -- ---------------------------------------------------------------
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'fiesta.v1', p_pattern => 'premios');
+  ORDS.DEFINE_HANDLER(p_module_name => 'fiesta.v1', p_pattern => 'premios', p_method => 'GET',
+    p_source_type => ORDS.source_type_plsql,
+    p_source => 'BEGIN fn_api.premios_listar; :status_code := fn_api.estado; END;',
+    p_comments => 'Rondas, puestos, ganadores, ausentes y cuántos pueden ganar');
+
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'fiesta.v1', p_pattern => 'premios/participantes');
+  ORDS.DEFINE_HANDLER(p_module_name => 'fiesta.v1', p_pattern => 'premios/participantes', p_method => 'GET',
+    p_source_type => ORDS.source_type_plsql,
+    p_source => 'BEGIN fn_api.premios_participantes; :status_code := fn_api.estado; END;',
+    p_comments => 'Nombres de los que llegaron y aún no han ganado');
+
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'fiesta.v1', p_pattern => 'premios/rondas');
+  ORDS.DEFINE_HANDLER(p_module_name => 'fiesta.v1', p_pattern => 'premios/rondas', p_method => 'POST',
+    p_source_type => ORDS.source_type_plsql,
+    p_source => 'BEGIN fn_api.ronda_crear(:body_text); :status_code := fn_api.estado; END;',
+    p_comments => 'Crea una ronda {nombre, puestos:[{premio}]}');
+
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'fiesta.v1', p_pattern => 'premios/rondas/:id');
+  ORDS.DEFINE_HANDLER(p_module_name => 'fiesta.v1', p_pattern => 'premios/rondas/:id', p_method => 'PUT',
+    p_source_type => ORDS.source_type_plsql,
+    p_source => 'BEGIN fn_api.ronda_actualizar(:id, :body_text); :status_code := fn_api.estado; END;',
+    p_comments => 'Edita nombre y puestos de una ronda');
+  ORDS.DEFINE_HANDLER(p_module_name => 'fiesta.v1', p_pattern => 'premios/rondas/:id', p_method => 'DELETE',
+    p_source_type => ORDS.source_type_plsql,
+    p_source => 'BEGIN fn_api.ronda_eliminar(:id); :status_code := fn_api.estado; END;',
+    p_comments => 'Borra una ronda y sus ganadores');
+
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'fiesta.v1', p_pattern => 'premios/puestos/:id/sortear');
+  ORDS.DEFINE_HANDLER(p_module_name => 'fiesta.v1', p_pattern => 'premios/puestos/:id/sortear', p_method => 'POST',
+    p_source_type => ORDS.source_type_plsql,
+    p_source => 'BEGIN fn_api.puesto_sortear(:id, :body_text); :status_code := fn_api.estado; END;',
+    p_comments => 'Sortea el ganador de un puesto {adminId}');
+
+  ORDS.DEFINE_TEMPLATE(p_module_name => 'fiesta.v1', p_pattern => 'premios/puestos/:id/ausente');
+  ORDS.DEFINE_HANDLER(p_module_name => 'fiesta.v1', p_pattern => 'premios/puestos/:id/ausente', p_method => 'POST',
+    p_source_type => ORDS.source_type_plsql,
+    p_source => 'BEGIN fn_api.puesto_ausente(:id); :status_code := fn_api.estado; END;',
+    p_comments => 'Marca ausente al ganador del puesto (el puesto queda libre)');
 
   COMMIT;
 END;

@@ -251,3 +251,93 @@ h2 { margin: 0; font-size: 26px; font-weight: 700; }
 .filtro-select { display: flex; flex-direction: column; gap: 4px; flex: 1 1 200px; min-width: 0; font-size: 13px; font-weight: 600; color: var(--tenue); }
 .filtro-select select { height: 48px; border: none; border-radius: 14px; background: var(--campo) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%236B716E' stroke-width='2.5' stroke-linecap='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") no-repeat right 14px center; padding: 0 38px 0 14px; font-size: 16px; color: var(--tinta); appearance: none; -webkit-appearance: none; text-overflow: ellipsis; }
 .hoja-leida .fila-texto { min-width: 0; }
+
+/* ---------- Premios ---------- */
+.resumen-premios { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.caja-dato { background: var(--tarjeta); border-radius: 18px; padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; }
+.caja-dato strong { font-size: 30px; font-weight: 700; line-height: 1.1; }
+.caja-dato span { font-size: 14px; color: var(--tenue); font-weight: 600; }
+.caja-dato.destacada { background: var(--pino); color: #fff; }
+.caja-dato.destacada strong { color: var(--dorado); }
+.caja-dato.destacada span { color: #CFE0D8; }
+.ronda { flex-shrink: 0; }
+.ronda-cabecera { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 16px 18px 12px; }
+.fila.puesto { min-height: 62px; }
+.fila.puesto.con-ganador { background: #FBF7EC; }
+.numero-puesto { flex-shrink: 0; width: 44px; height: 44px; border-radius: 14px; background: var(--gris); color: var(--pino);
+  display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 16px; }
+.con-ganador .numero-puesto { background: var(--dorado); color: #0A2B22; }
+.normal { font-weight: 400; }
+.contador { display: flex; align-items: center; gap: 8px; }
+.contador button { width: 52px; height: 52px; border-radius: 14px; border: none; background: var(--gris); color: var(--verde); font-size: 26px; font-weight: 700; }
+.campo .contador input { width: 90px; text-align: center; font-weight: 700; }
+.crece { flex: 1; min-width: 0; height: 52px; border-radius: 14px; border: none; background: var(--campo); padding: 0 16px; font-size: 17px; }
+.lista-premios { display: flex; flex-direction: column; gap: 8px; }
+.premio-puesto { display: flex; align-items: center; gap: 10px; }
+.premio-puesto input { flex: 1; min-width: 0; height: 48px; border-radius: 14px; border: none; background: var(--campo); padding: 0 14px; font-size: 16px; color: var(--tinta); }
+
+/* ---------- Proyector ---------- */
+.proyector {
+  position: fixed; inset: 0; overflow: hidden; display: flex; flex-direction: column;
+  background: radial-gradient(ellipse at 50% 35%, #17573F 0%, #0E3B2E 45%, #07221A 100%);
+  color: #fff; font-family: Inter, system-ui, sans-serif;
+}
+.proyector-centro { margin: auto; text-align: center; font-size: 24px; display: flex; flex-direction: column; gap: 20px; align-items: center; }
+.proyector-barra { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 2.2vh 3vw 0; }
+.proyector-barra h1 { font-family: 'Playfair Display', Georgia, 'Times New Roman', serif; font-size: clamp(26px, 3.2vw, 48px); font-weight: 700; color: var(--dorado); }
+.proyector-evento { font-size: clamp(13px, 1.1vw, 18px); letter-spacing: .14em; text-transform: uppercase; color: #CFE0D8; }
+.proyector-controles { display: flex; align-items: center; gap: 10px; }
+.proyector-controles button { width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(255,255,255,.25); background: rgba(255,255,255,.06); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center; opacity: .55; }
+.proyector-controles button:hover, .proyector-controles button:focus-visible { opacity: 1; }
+.proyector-dato { font-size: clamp(14px, 1.3vw, 20px); color: #CFE0D8; margin-right: 8px; }
+.proyector-dato strong { color: #fff; font-size: 1.3em; }
+
+.escenario { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.6vh; text-align: center; padding: 0 4vw; }
+.escenario-puesto { font-size: clamp(18px, 2vw, 32px); letter-spacing: .2em; text-transform: uppercase; color: #CFE0D8; font-weight: 600; }
+.escenario-premio { font-family: 'Playfair Display', Georgia, serif; font-size: clamp(28px, 3.8vw, 64px); color: var(--dorado); font-weight: 700; line-height: 1.1; }
+.escenario-nombre {
+  min-height: 1.3em; max-width: 92vw; font-size: clamp(40px, 6.4vw, 120px); font-weight: 800; line-height: 1.15;
+  padding: .15em .6em; border-radius: 28px; border: 2px solid rgba(212,175,90,.35); background: rgba(0,0,0,.18);
+  overflow-wrap: anywhere;
+}
+.escenario-pregunta { color: rgba(255,255,255,.45); font-weight: 600; }
+.fase-girando .escenario-nombre { color: #F3E2B3; border-color: rgba(212,175,90,.7); }
+.fase-ganador .escenario-nombre { color: #fff; border-color: var(--dorado); background: rgba(212,175,90,.14);
+  box-shadow: 0 0 60px rgba(212,175,90,.45); animation: brillar .9s ease-out; }
+.escenario-lugar { font-size: clamp(18px, 2vw, 34px); color: #CFE0D8; min-height: 1.3em; }
+.escenario-final .escenario-puesto { font-family: 'Playfair Display', Georgia, serif; font-size: clamp(40px, 6vw, 96px); color: var(--dorado); letter-spacing: 0; text-transform: none; }
+.escenario-acciones { margin-top: 1.5vh; min-height: 72px; }
+.btn-escenario { min-height: 64px; padding: 0 40px; border-radius: 999px; border: none; background: var(--dorado); color: #0A2B22;
+  font-size: clamp(18px, 1.6vw, 26px); font-weight: 800; box-shadow: 0 8px 30px rgba(0,0,0,.3); }
+.btn-escenario.secundario { background: rgba(255,255,255,.12); color: #fff; box-shadow: none; }
+.btn-escenario.texto { background: none; color: #CFE0D8; box-shadow: none; }
+.proyector-error { background: rgba(180,35,24,.85); padding: 10px 18px; border-radius: 14px; font-size: 18px; }
+@keyframes brillar { from { transform: scale(.85); opacity: .4; } 60% { transform: scale(1.05); opacity: 1; } to { transform: none; } }
+
+.tablero { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1vh 1vw; padding: 1.5vh 3vw 3vh; max-height: 34vh; overflow-y: auto; }
+.casilla-puesto { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 8px 12px; border-radius: 16px; text-align: left;
+  border: 1px solid rgba(255,255,255,.14); background: rgba(255,255,255,.05); color: #fff; }
+.casilla-puesto.llena { background: rgba(212,175,90,.16); border-color: rgba(212,175,90,.55); }
+.casilla-puesto.actual { outline: 3px solid var(--dorado); outline-offset: 0; }
+.casilla-num { flex-shrink: 0; font-weight: 800; color: var(--dorado); font-size: clamp(15px, 1.2vw, 20px); }
+.casilla-texto { display: flex; flex-direction: column; min-width: 0; }
+.casilla-premio { font-size: clamp(11px, .85vw, 14px); color: #CFE0D8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.casilla-texto strong { font-size: clamp(13px, 1.05vw, 18px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.proyector-velo { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; z-index: 20; padding: 20px; }
+.proyector-dialogo { background: #0E3B2E; border: 1px solid rgba(212,175,90,.5); border-radius: 28px; padding: 32px; max-width: 620px; width: 100%;
+  display: flex; flex-direction: column; gap: 14px; text-align: center; }
+.proyector-dialogo h2 { color: var(--dorado); font-size: 30px; }
+.proyector-dialogo p { color: #CFE0D8; font-size: 18px; margin: 0 0 6px; }
+
+.confeti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.confeti i { position: absolute; top: -20px; width: 10px; height: 16px; border-radius: 2px; opacity: 0; animation-name: caer; animation-timing-function: linear; animation-fill-mode: forwards; }
+@keyframes caer { 0% { transform: translateY(0) rotate(0); opacity: 1; } 100% { transform: translateY(110vh) rotate(720deg); opacity: .9; } }
+
+@media (max-width: 900px) {
+  .tablero { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: 34vh; overflow-y: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fase-ganador .escenario-nombre { animation: none; }
+}

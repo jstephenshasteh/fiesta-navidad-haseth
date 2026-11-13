@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import QrScanner from 'qr-scanner';
-import { api, hora, iniciales, leerSesion, normalizar, primerNombre, type Invitado, type Resumen } from '../api';
+import { api, esGestion, hora, iniciales, leerSesion, normalizar, primerNombre, type Invitado, type Resumen } from '../api';
 import { Aviso, Avatar, Buscador, Cargando, Hoja, Pantalla } from '../components/Comunes';
 import { Icono } from '../components/Icono';
 
@@ -188,7 +188,7 @@ export default function Escanear() {
       <section className="tarjeta lista-flex" aria-label="Últimas llegadas">
         <div className="fila-entre tarjeta-titulo">
           <strong>Últimas llegadas</strong>
-          <Link to="/invitados">Ver todas</Link>
+          {esGestion() && <Link to="/invitados">Ver todas</Link>}
         </div>
         <div className="scroll">
           {cargandoRecientes && recientes.length === 0 && <Cargando texto="Cargando llegadas…" />}

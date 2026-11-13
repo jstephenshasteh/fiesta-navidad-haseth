@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { apex } from '../apex.js';
-import { requiereSesion } from '../auth.js';
+import { requiereGestion } from '../auth.js';
 import { obtenerArte, obtenerEvento, obtenerInvitado } from '../services/datos.js';
 import { pngPase } from '../services/pase.js';
 import { enviarCorreo } from '../services/correo.js';
@@ -12,7 +12,7 @@ import { config } from '../config.js';
 export const enviosRouter = Router();
 
 /** Qué canales están configurados en el servidor. */
-enviosRouter.get('/envios/canales', requiereSesion, (_req, res) => {
+enviosRouter.get('/envios/canales', requiereGestion, (_req, res) => {
   const modo = modoWhatsapp();
   res.json({
     whatsapp: modo !== 'sin-configurar',
@@ -55,7 +55,7 @@ const mensajeError = (e: unknown) => (e instanceof Error ? e.message : String(e)
  * WhatsApp va en dos pasadas: primero el arte a todos los del lote, una pausa, y luego los pases.
  * Así el arte siempre llega antes que el pase.
  */
-enviosRouter.post('/envios', requiereSesion, async (req, res) => {
+enviosRouter.post('/envios', requiereGestion, async (req, res) => {
   const p = peticion.parse(req.body);
   const adminId = req.sesion!.adminId;
   const ev = await obtenerEvento();

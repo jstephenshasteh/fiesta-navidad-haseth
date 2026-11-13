@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, guardarSesion, iniciales, leerSesion, primerNombre, type Admin } from '../api';
+import { api, guardarSesion, iniciales, leerSesion, NOMBRE_ROL, primerNombre, rolDe, type Admin } from '../api';
 import { Aviso, Avatar, Cargando, Hoja } from '../components/Comunes';
 
 const TECLAS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'];
@@ -65,7 +65,7 @@ export default function Ingreso() {
             <button key={a.id} type="button" className="tarjeta-admin" onClick={() => { setSel(a); setPin(''); setErrorPin(null); }}>
               <Avatar texto={iniciales(a.nombre)} color={a.color} tam={76} />
               <strong>{a.nombre}</strong>
-              <span className="tenue">{a.esPrincipal ? 'Admin. principal' : 'Administrador'}</span>
+              <span className="tenue">{NOMBRE_ROL[rolDe(a)]}</span>
             </button>
           ))}
         </div>

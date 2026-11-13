@@ -1,22 +1,26 @@
 import { useEffect, type ReactNode } from 'react';
 import { NavLink } from 'react-router-dom';
+import { esGestion, miRol } from '../api';
 import { Icono, type NombreIcono } from './Icono';
 
-const TABS: { a: string; n: NombreIcono; t: string }[] = [
+/** Pestañas; las marcadas "gestion" no las ve el perfil Host. */
+const TABS: { a: string; n: NombreIcono; t: string; gestion?: boolean }[] = [
   { a: '/escanear', n: 'escanear', t: 'Escanear' },
-  { a: '/invitados', n: 'invitados', t: 'Invitados' },
-  { a: '/enviar', n: 'enviar', t: 'Enviar' },
+  { a: '/invitados', n: 'invitados', t: 'Invitados', gestion: true },
+  { a: '/enviar', n: 'enviar', t: 'Enviar', gestion: true },
+  { a: '/premios', n: 'regalo', t: 'Premios', gestion: true },
   { a: '/ajustes', n: 'ajustes', t: 'Ajustes' },
 ];
 
 /** Pantalla con barra de pestañas inferior. */
 export function Pantalla({ children, extra }: { children: ReactNode; extra?: ReactNode }) {
+  const tabs = TABS.filter((t) => !t.gestion || esGestion(miRol()));
   return (
     <div className="pantalla">
       <main className="contenido">{children}</main>
       {extra}
-      <nav className="tabbar" aria-label="Secciones">
-        {TABS.map((tab) => (
+      <nav className="tabbar" aria-label="Secciones" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
+        {tabs.map((tab) => (
           <NavLink key={tab.a} to={tab.a} className={({ isActive }) => 'tab' + (isActive ? ' activa' : '')}>
             <Icono n={tab.n} size={26} />
             {tab.t}

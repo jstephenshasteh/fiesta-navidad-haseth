@@ -2,7 +2,7 @@ import { Router } from 'express';
 import ExcelJS from 'exceljs';
 import { z } from 'zod';
 import { apex } from '../apex.js';
-import { requiereSesion } from '../auth.js';
+import { requiereGestion, requiereSesion } from '../auth.js';
 import { listarInvitados, obtenerEvento, obtenerInvitado } from '../services/datos.js';
 import { pngPase } from '../services/pase.js';
 import { limpiarTexto, normalizarCorreo, normalizarWhatsapp, nuevoToken } from '../util.js';
@@ -30,7 +30,7 @@ const filaImport = z.object({
  * Aquí se limpian correos y teléfonos y se genera el token secreto del QR de cada invitado;
  * APEX lo usa solo si el invitado es nuevo.
  */
-invitadosRouter.post('/invitados/importar', requiereSesion, async (req, res) => {
+invitadosRouter.post('/invitados/importar', requiereGestion, async (req, res) => {
   const { invitados } = z.object({ invitados: z.array(filaImport).min(1).max(5000) }).parse(req.body);
   const limpios = invitados.map((f) => ({
     nombre: f.nombre.replace(/\s+/g, ' '),
@@ -72,7 +72,7 @@ function limpiarContacto(d: { correo?: string | null; whatsapp?: string | null }
 }
 
 /** Agrega un invitado sin Excel. */
-invitadosRouter.post('/invitados', requiereSesion, async (req, res) => {
+invitadosRouter.post('/invitados', requiereGestion, async (req, res) => {
   const d = datosInvitado.parse(req.body);
   const { correo, whatsapp } = limpiarContacto(d);
   const r = await apex<{ id: number; codigo: string }>('POST', '/invitados', {
@@ -82,7 +82,7 @@ invitadosRouter.post('/invitados', requiereSesion, async (req, res) => {
 });
 
 /** Edita nombre, compañía, área, WhatsApp o correo de un invitado. */
-invitadosRouter.put('/invitados/:id', requiereSesion, async (req, res) => {
+invitadosRouter.put('/invitados/:id', requiereGestion, async (req, res) => {
   const d = datosInvitado.parse(req.body);
   const { correo, whatsapp } = limpiarContacto(d);
   await apex('PUT', `/invitados/${Number(req.params.id)}`, {
@@ -91,13 +91,13 @@ invitadosRouter.put('/invitados/:id', requiereSesion, async (req, res) => {
   res.json({ ok: true });
 });
 
-invitadosRouter.delete('/invitados/:id', requiereSesion, async (req, res) => {
+invitadosRouter.delete('/invitados/:id', requiereGestion, async (req, res) => {
   await apex('DELETE', `/invitados/${Number(req.params.id)}`);
   res.json({ ok: true });
 });
 
 /** Imagen 2: pase QR personalizado. */
-invitadosRouter.get('/invitados/:id/pase.png', requiereSesion, async (req, res) => {
+invitadosRouter.get('/invitados/:id/pase.png', requiereGestion, async (req, res) => {
   const [inv, ev] = await Promise.all([obtenerInvitado(Number(req.params.id)), obtenerEvento()]);
   if (!inv) return res.status(404).end();
   res.setHeader('Content-Type', 'image/png');
@@ -125,7 +125,7 @@ invitadosRouter.get('/invitados/plantilla.xlsx', async (_req, res) => {
 });
 
 /** Exporta invitados con su estado de envío y llegada. */
-invitadosRouter.get('/invitados/exportar.xlsx', requiereSesion, async (req, res) => {
+invitadosRouter.get('/invitados/exportar.xlsx', requiereGestion, async (req, res) => {
   // ?filtro=pendientes | enviadas | llegaron  (sin filtro: todos)  &compania=…  &area=…
   const filtro = String(req.query.filtro ?? 'todos');
   const compania = typeof req.query.compania === 'string' ? req.query.compania : null;

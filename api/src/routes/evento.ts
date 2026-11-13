@@ -27,7 +27,7 @@ const cambios = z.object({
   mensaje: z.string().max(2000),
 }).partial();
 
-eventoRouter.put('/evento', requiereSesion, requierePrincipal, async (req, res) => {
+eventoRouter.put('/evento', requierePrincipal, async (req, res) => {
   res.json(await apex<Evento>('PUT', '/evento', { cuerpo: cambios.parse(req.body) }));
 });
 
@@ -51,7 +51,7 @@ eventoRouter.get('/evento/ejemplo-pase.png', async (_req, res) => {
   res.send(pngPase({ nombre: 'Juan Stephens', codigo: 'HAS-000', token: 'ejemplo', evento: ev }));
 });
 
-eventoRouter.put('/evento/arte', requiereSesion, requierePrincipal, subir.single('arte'), async (req, res) => {
+eventoRouter.put('/evento/arte', requierePrincipal, subir.single('arte'), async (req, res) => {
   const f = req.file;
   if (!f || !/^image\/(png|jpeg)$/.test(f.mimetype)) return res.status(400).json({ error: 'Suba una imagen PNG o JPG' });
   await apex('PUT', `/evento/arte?nombre=${encodeURIComponent(f.originalname)}`, { binario: { datos: f.buffer, tipo: f.mimetype } });
